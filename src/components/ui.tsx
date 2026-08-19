@@ -67,7 +67,7 @@ export function LiveDot() {
 
 export function Screen({ title, sub, action, children }: { title: ReactNode; sub?: ReactNode; action?: ReactNode; children: ReactNode }) {
   return (
-    <div className="mx-auto max-w-xl px-[18px] pt-4 lg:max-w-3xl lg:px-8 lg:pt-7">
+    <div className="mx-auto max-w-xl px-[18px] pt-4 md:max-w-2xl md:px-6 lg:max-w-3xl lg:px-8 lg:pt-7">
       <div className="flex items-start justify-between gap-2.5">
         <div>
           <h1 className="disp text-[26px] font-extrabold tracking-tight lg:text-3xl">{title}</h1>

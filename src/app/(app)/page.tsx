@@ -72,7 +72,7 @@ export default async function HomePage() {
   return (
     <>
       {/* ============ MOBILE HOME ============ */}
-      <div className="px-[18px] lg:hidden">
+      <div className="px-[18px] md:mx-auto md:max-w-4xl lg:hidden">
         <header className="sticky top-0 z-20 -mx-[18px] flex items-start justify-between gap-2.5 bg-paper px-[18px] pb-2.5 pt-4">
           <div>
             <h1 className="disp text-[26px] font-extrabold tracking-tight">{d.settings.app_title}</h1>
@@ -87,58 +87,66 @@ export default async function HomePage() {
         <div className="disp mt-0.5 text-lg font-bold">The crew is assembling ✈️</div>
         <WeddingBanner url={d.settings.wedding_url} days={days} />
 
-        {active && (
-          <>
-            <SectionHeader meta={<><LiveDot /> updated {timeAgo(active.activeLeg!.last_synced_at ?? new Date().toISOString())}</>}>In the air</SectionHeader>
-            <FlightCard travel={active} full />
-          </>
-        )}
+        <div className="md:columns-2 md:gap-x-5">
+          {active && (
+            <section className="break-inside-avoid">
+              <SectionHeader meta={<><LiveDot /> updated {timeAgo(active.activeLeg!.last_synced_at ?? new Date().toISOString())}</>}>In the air</SectionHeader>
+              <FlightCard travel={active} full />
+            </section>
+          )}
 
-        <SectionHeader>Arriving today</SectionHeader>
-        {d.arrivingToday.length ? (
-          <div className="zc-card overflow-hidden p-0">{d.arrivingToday.map((t) => <ArrivalRow key={t.id} t={t} />)}</div>
-        ) : (
-          <div className="zc-card px-6 py-7 text-center">
-            <div className="text-4xl" aria-hidden>🛬</div>
-            <div className="disp mt-2 text-lg font-extrabold">Quiet airport day</div>
-            <div className="mt-1 text-sm text-ink2">{d.comingNext[0] ? `Next arrival: ${d.comingNext[0].title} · ${fmtDayShortUpper(d.comingNext[0].arrivalIso)}` : "No arrivals coming up"}</div>
-          </div>
-        )}
+          <section className="break-inside-avoid">
+            <SectionHeader>Arriving today</SectionHeader>
+            {d.arrivingToday.length ? (
+              <div className="zc-card overflow-hidden p-0">{d.arrivingToday.map((t) => <ArrivalRow key={t.id} t={t} />)}</div>
+            ) : (
+              <div className="zc-card px-6 py-7 text-center">
+                <div className="text-4xl" aria-hidden>🛬</div>
+                <div className="disp mt-2 text-lg font-extrabold">Quiet airport day</div>
+                <div className="mt-1 text-sm text-ink2">{d.comingNext[0] ? `Next arrival: ${d.comingNext[0].title} · ${fmtDayShortUpper(d.comingNext[0].arrivalIso)}` : "No arrivals coming up"}</div>
+              </div>
+            )}
+          </section>
 
-        <SectionHeader meta={<Link href="/family">{d.here.length} in Zimbabwe</Link>}>Who&apos;s here</SectionHeader>
-        <WhosHere here={d.here} />
+          <section className="break-inside-avoid">
+            <SectionHeader meta={<Link href="/family">{d.here.length} in Zimbabwe</Link>}>Who&apos;s here</SectionHeader>
+            <WhosHere here={d.here} />
+          </section>
 
-        {d.comingNext.length > 0 && (
-          <>
-            <SectionHeader>Coming next</SectionHeader>
-            <div className="zc-card overflow-hidden p-0">
-              {d.comingNext.slice(0, 3).map((t) => (
-                <div key={t.id} className="flex items-center gap-3 border-b border-line2 px-4 py-3 last:border-0">
-                  <span className="mono flex-none rounded-lg bg-ink px-2.5 py-1 text-[11.5px] font-semibold text-paper">{fmtDayShortUpper(t.arrivalIso)}</span>
-                  <span className="text-[15px] font-extrabold">{t.members[0]?.emoji ?? "✈️"} {t.title}</span>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
+          {d.comingNext.length > 0 && (
+            <section className="break-inside-avoid">
+              <SectionHeader>Coming next</SectionHeader>
+              <div className="zc-card overflow-hidden p-0">
+                {d.comingNext.slice(0, 3).map((t) => (
+                  <div key={t.id} className="flex items-center gap-3 border-b border-line2 px-4 py-3 last:border-0">
+                    <span className="mono flex-none rounded-lg bg-ink px-2.5 py-1 text-[11.5px] font-semibold text-paper">{fmtDayShortUpper(t.arrivalIso)}</span>
+                    <span className="text-[15px] font-extrabold">{t.members[0]?.emoji ?? "✈️"} {t.title}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
 
-        {d.dinner && (
-          <>
-            <SectionHeader>Tonight</SectionHeader>
-            <Link href={`/plans/${d.dinner.id}`} className="flex items-center gap-3.5 rounded-[22px] p-[17px] text-white shadow-[0_14px_26px_-18px_rgba(168,53,96,.7)]" style={{ background: "linear-gradient(150deg,#c74471,#a83560)" }}>
-              <span className="text-3xl" aria-hidden>🍲</span>
-              <span><span className="disp block text-[17px] font-extrabold">{d.dinner.title}</span><span className="block text-[12.5px] font-bold opacity-90">{d.dinner.location}</span></span>
-              <span className="mono ml-auto text-[15px] font-semibold">{fmtTime(`${d.dinner.date}T${d.dinner.start_time}:00+02:00`)}</span>
-            </Link>
-          </>
-        )}
+          {d.dinner && (
+            <section className="break-inside-avoid">
+              <SectionHeader>Tonight</SectionHeader>
+              <Link href={`/plans/${d.dinner.id}`} className="flex items-center gap-3.5 rounded-[22px] p-[17px] text-white shadow-[0_14px_26px_-18px_rgba(168,53,96,.7)]" style={{ background: "linear-gradient(150deg,#c74471,#a83560)" }}>
+                <span className="text-3xl" aria-hidden>🍲</span>
+                <span><span className="disp block text-[17px] font-extrabold">{d.dinner.title}</span><span className="block text-[12.5px] font-bold opacity-90">{d.dinner.location}</span></span>
+                <span className="mono ml-auto text-[15px] font-semibold">{fmtTime(`${d.dinner.date}T${d.dinner.start_time}:00+02:00`)}</span>
+              </Link>
+            </section>
+          )}
 
-        {d.pinned && (
-          <div className="mt-3.5 flex items-center gap-3 rounded-[18px] border border-[#f4dcac] bg-[#fff5e2] px-4 py-3.5">
-            <span className="text-xl" aria-hidden>📢</span>
-            <div><div className="mono text-[10px] font-semibold uppercase tracking-wide text-[#b57d16]">Pinned notice</div><div className="mt-0.5 text-[15px] font-extrabold text-ink">{d.pinned.title}</div></div>
-          </div>
-        )}
+          {d.pinned && (
+            <section className="break-inside-avoid pt-6">
+              <div className="flex items-center gap-3 rounded-[18px] border border-[color-mix(in_srgb,var(--warn)_38%,transparent)] bg-[color-mix(in_srgb,var(--warn)_12%,var(--card))] px-4 py-3.5">
+                <span className="text-xl" aria-hidden>📢</span>
+                <div><div className="mono text-[10px] font-semibold uppercase tracking-wide text-warn">Pinned notice</div><div className="mt-0.5 text-[15px] font-extrabold text-ink">{d.pinned.title}</div></div>
+              </div>
+            </section>
+          )}
+        </div>
       </div>
 
       {/* ============ DESKTOP COMMAND CENTRE ============ */}

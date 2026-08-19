@@ -15,7 +15,7 @@ export default async function PlansPage() {
   return (
     <Screen title="Plans 📋">
       {plans.length === 0 && <EmptyState emoji="📅" title="Nothing planned yet" hint="Tap + to add a plan." />}
-      <div className="flex flex-col gap-3">
+      <div className="grid gap-3 md:grid-cols-2">
         {plans.map((p) => {
           const c = categoryOf(p.category);
           const going = p.attendees.some((a) => a.id === me.id);

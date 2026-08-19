@@ -14,7 +14,7 @@ export default async function PickupsPage() {
   return (
     <Screen title="Airport runs 🚗">
       {runs.length === 0 && <EmptyState emoji="🚗" title="No pickups needed" hint="Requests appear here when travel needs a driver." />}
-      <div className="flex flex-col gap-3">
+      <div className="grid gap-3 md:grid-cols-2">
         {runs.map((t) => {
           const leg = t.activeLeg;
           const driver = t.pickup?.driver_user_id ? users.find((u) => u.id === t.pickup?.driver_user_id) ?? null : null;
