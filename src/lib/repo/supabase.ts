@@ -1,0 +1,310 @@
+import "server-only";
+
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { createAdminSupabase } from "@/lib/supabase/admin";
+import type {
+  Announcement,
+  AppSettings,
+  FlightLeg,
+  FlightStatus,
+  ImportantInfo,
+  Pickup,
+  Plan,
+  PublicUser,
+  ShoppingItem,
+  Task,
+  TravelGroup,
+} from "@/lib/types";
+import type {
+  AnnouncementView,
+  ClaimResult,
+  InfoGroup,
+  NewAnnouncementInput,
+  NewPlanInput,
+  NewShoppingInput,
+  NewTaskInput,
+  NewTravelInput,
+  NewUserInput,
+  PlanView,
+  Repo,
+  ShoppingView,
+  TaskView,
+  TravelView,
+} from "./types";
+
+const USER_COLS = "id,name,username,emoji,is_admin,status,created_at,updated_at";
+
+class SupabaseRepo implements Repo {
+  readonly kind = "supabase" as const;
+  private sb: SupabaseClient;
+  constructor() {
+    this.sb = createAdminSupabase();
+  }
+
+  private async userMap(): Promise<Map<string, PublicUser>> {
+    const { data } = await this.sb.from("users").select(USER_COLS);
+    const m = new Map<string, PublicUser>();
+    (data ?? []).forEach((u) => m.set((u as PublicUser).id, u as PublicUser));
+    return m;
+  }
+
+  async getSettings(): Promise<AppSettings> {
+    const { data } = await this.sb.from("app_settings").select("*").limit(1).single();
+    return (data as AppSettings) ?? { id: "singleton", app_title: "Zim 2026", wedding_date: "2026-09-12", wedding_url: "", updated_at: new Date().toISOString() };
+  }
+  async updateSettings(patch: Partial<AppSettings>) {
+    await this.sb.from("app_settings").update(patch).eq("id", true);
+  }
+
+  async listUsers() {
+    const { data } = await this.sb.from("users").select(USER_COLS).order("name");
+    return (data ?? []) as PublicUser[];
+  }
+  async getUser(id: string) {
+    const { data } = await this.sb.from("users").select(USER_COLS).eq("id", id).maybeSingle();
+    return (data as PublicUser) ?? null;
+  }
+  async getUserWithPin(username: string) {
+    const { data } = await this.sb.from("users").select("id,pin_hash").ilike("username", username).maybeSingle();
+    return (data as { id: string; pin_hash: string }) ?? null;
+  }
+  async usernameTaken(username: string) {
+    const { data } = await this.sb.from("users").select("id").ilike("username", username).maybeSingle();
+    return Boolean(data);
+  }
+  async createUser(input: NewUserInput) {
+    const { data, error } = await this.sb
+      .from("users")
+      .insert({ name: input.name, username: input.username, emoji: input.emoji, pin_hash: input.pinHash, is_admin: input.is_admin ?? false, status: input.status ?? "here" })
+      .select(USER_COLS)
+      .single();
+    if (error) throw error;
+    return data as PublicUser;
+  }
+  async setAdmin(id: string, isAdmin: boolean) {
+    await this.sb.from("users").update({ is_admin: isAdmin }).eq("id", id);
+  }
+  async setUserStatus(id: string, status: PublicUser["status"]) {
+    await this.sb.from("users").update({ status }).eq("id", id);
+  }
+
+  private planViews(plans: Plan[], attendees: { plan_id: string; user_id: string }[], users: Map<string, PublicUser>): PlanView[] {
+    return plans.map((p) => ({
+      ...p,
+      creator: users.get(p.created_by) ?? null,
+      attendees: attendees.filter((a) => a.plan_id === p.id).map((a) => users.get(a.user_id)).filter(Boolean) as PublicUser[],
+    }));
+  }
+  async listPlans() {
+    const [{ data: plans }, { data: att }, users] = await Promise.all([
+      this.sb.from("plans").select("*").order("date").order("start_time", { nullsFirst: true }),
+      this.sb.from("plan_attendees").select("plan_id,user_id"),
+      this.userMap(),
+    ]);
+    return this.planViews((plans ?? []) as Plan[], (att ?? []) as { plan_id: string; user_id: string }[], users);
+  }
+  async getPlan(id: string) {
+    const [{ data: p }, { data: att }, users] = await Promise.all([
+      this.sb.from("plans").select("*").eq("id", id).maybeSingle(),
+      this.sb.from("plan_attendees").select("plan_id,user_id").eq("plan_id", id),
+      this.userMap(),
+    ]);
+    if (!p) return null;
+    return this.planViews([p as Plan], (att ?? []) as { plan_id: string; user_id: string }[], users)[0];
+  }
+  async createPlan(input: NewPlanInput) {
+    const { data: p, error } = await this.sb.from("plans").insert({
+      title: input.title, description: input.description ?? null, category: input.category, date: input.date,
+      start_time: input.start_time ?? null, location: input.location ?? null, anyone_can_join: input.anyone_can_join, created_by: input.created_by,
+    }).select("*").single();
+    if (error) throw error;
+    const rows = [...new Set(input.attendees)].map((u) => ({ plan_id: (p as Plan).id, user_id: u, added_by: input.created_by }));
+    if (rows.length) await this.sb.from("plan_attendees").insert(rows);
+    return (await this.getPlan((p as Plan).id))!;
+  }
+  async deletePlan(id: string) {
+    await this.sb.from("plans").delete().eq("id", id);
+  }
+  async joinPlan(planId: string, userId: string, addedBy: string) {
+    await this.sb.from("plan_attendees").upsert({ plan_id: planId, user_id: userId, added_by: addedBy }, { onConflict: "plan_id,user_id", ignoreDuplicates: true });
+  }
+  async leavePlan(planId: string, userId: string) {
+    await this.sb.from("plan_attendees").delete().eq("plan_id", planId).eq("user_id", userId);
+  }
+
+  private buildTravel(tg: TravelGroup, legs: FlightLeg[], members: { travel_group_id: string; user_id: string }[], pickups: Pickup[], users: Map<string, PublicUser>): TravelView {
+    const myLegs = legs.filter((l) => l.travel_group_id === tg.id).sort((a, b) => a.leg_order - b.leg_order);
+    const active = myLegs.find((l) => l.status === "air") ?? myLegs[myLegs.length - 1] ?? null;
+    const last = myLegs[myLegs.length - 1] ?? null;
+    const pickup = pickups.find((p) => p.travel_group_id === tg.id) ?? null;
+    return {
+      ...tg,
+      members: members.filter((m) => m.travel_group_id === tg.id).map((m) => users.get(m.user_id)).filter(Boolean) as PublicUser[],
+      legs: myLegs,
+      pickup,
+      driver: pickup?.driver_user_id ? users.get(pickup.driver_user_id) ?? null : null,
+      activeLeg: active,
+      arrivalIso: last?.estimated_arrival ?? last?.scheduled_arrival ?? null,
+    };
+  }
+  private async travelBundle() {
+    const [{ data: tg }, { data: legs }, { data: members }, { data: pickups }, users] = await Promise.all([
+      this.sb.from("travel_groups").select("*"),
+      this.sb.from("flight_legs").select("*"),
+      this.sb.from("travel_group_members").select("travel_group_id,user_id"),
+      this.sb.from("pickups").select("*"),
+      this.userMap(),
+    ]);
+    return {
+      tg: (tg ?? []) as TravelGroup[], legs: (legs ?? []) as FlightLeg[],
+      members: (members ?? []) as { travel_group_id: string; user_id: string }[],
+      pickups: (pickups ?? []) as Pickup[], users,
+    };
+  }
+  async listTravel() {
+    const b = await this.travelBundle();
+    return b.tg.map((t) => this.buildTravel(t, b.legs, b.members, b.pickups, b.users)).sort((a, b2) => (a.arrivalIso ?? "").localeCompare(b2.arrivalIso ?? ""));
+  }
+  async getTravel(id: string) {
+    const b = await this.travelBundle();
+    const t = b.tg.find((x) => x.id === id);
+    return t ? this.buildTravel(t, b.legs, b.members, b.pickups, b.users) : null;
+  }
+  async createTravel(input: NewTravelInput) {
+    const { data: tg, error } = await this.sb.from("travel_groups").insert({ title: input.title, status: "upcoming", general_notes: input.notes ?? null, created_by: input.created_by }).select("*").single();
+    if (error) throw error;
+    const gid = (tg as TravelGroup).id;
+    if (input.travellers.length) await this.sb.from("travel_group_members").insert(input.travellers.map((u) => ({ travel_group_id: gid, user_id: u })));
+    let firstLeg: string | null = null;
+    for (const l of input.legs) {
+      const { data: leg } = await this.sb.from("flight_legs").insert({
+        travel_group_id: gid, leg_order: l.leg_order, provider: l.provider ?? "demo", provider_flight_id: l.provider_flight_id ?? null,
+        flight_number: l.flight_number, airline_code: l.airline_code ?? null, airline_name: l.airline_name ?? null,
+        origin_airport: l.origin_airport, origin_city: l.origin_city ?? null, destination_airport: l.destination_airport, destination_city: l.destination_city ?? null,
+        scheduled_departure: l.scheduled_departure ?? null, scheduled_arrival: l.scheduled_arrival ?? null, estimated_arrival: l.estimated_arrival ?? null,
+        terminal_departure: l.terminal_departure ?? null, aircraft_type: l.aircraft_type ?? null, aircraft_type_code: l.aircraft_type_code ?? null,
+        aircraft_registration: l.aircraft_registration ?? null, status: l.status ?? "scheduled",
+      }).select("id").single();
+      firstLeg ??= (leg as { id: string } | null)?.id ?? null;
+    }
+    if (input.pickup) await this.sb.from("pickups").insert({ travel_group_id: gid, flight_leg_id: firstLeg, requested: true });
+    return (await this.getTravel(gid))!;
+  }
+  async setTravelStatus(id: string, status: TravelGroup["status"]) {
+    await this.sb.from("travel_groups").update({ status }).eq("id", id);
+  }
+  async setLegStatus(legId: string, status: FlightStatus, progress: number | null) {
+    await this.sb.from("flight_legs").update({ status, ...(progress != null ? { progress } : {}) }).eq("id", legId);
+  }
+  async syncLeg(legId: string, patch: Partial<FlightLeg>) {
+    await this.sb.from("flight_legs").update({ ...patch, last_synced_at: new Date().toISOString() }).eq("id", legId);
+  }
+
+  async requestPickup(travelGroupId: string, flightLegId: string | null) {
+    await this.sb.from("pickups").upsert({ travel_group_id: travelGroupId, flight_leg_id: flightLegId, requested: true }, { onConflict: "travel_group_id" });
+  }
+  async claimPickup(travelGroupId: string, userId: string): Promise<ClaimResult> {
+    const { data } = await this.sb.from("pickups").update({ driver_user_id: userId }).eq("travel_group_id", travelGroupId).is("driver_user_id", null).select("driver_user_id");
+    if (data && data.length) return { ok: true };
+    const { data: cur } = await this.sb.from("pickups").select("driver_user_id").eq("travel_group_id", travelGroupId).maybeSingle();
+    return { ok: false, claimedBy: (cur as { driver_user_id: string | null } | null)?.driver_user_id ?? null };
+  }
+  async releasePickup(travelGroupId: string) {
+    await this.sb.from("pickups").update({ driver_user_id: null }).eq("travel_group_id", travelGroupId);
+  }
+
+  async listShopping(): Promise<ShoppingView[]> {
+    const [{ data }, users] = await Promise.all([this.sb.from("shopping_items").select("*").order("created_at"), this.userMap()]);
+    return ((data ?? []) as ShoppingItem[]).map((s) => ({ ...s, creator: users.get(s.created_by ?? "") ?? null, claimer: s.claimed_by ? users.get(s.claimed_by) ?? null : null }));
+  }
+  async addShopping(input: NewShoppingInput) {
+    const { data } = await this.sb.from("shopping_items").insert({ item: input.item, quantity: input.quantity, category: input.category, notes: input.notes ?? null, created_by: input.created_by }).select("*").single();
+    const users = await this.userMap();
+    const s = data as ShoppingItem;
+    return { ...s, creator: users.get(s.created_by ?? "") ?? null, claimer: null };
+  }
+  async claimShopping(id: string, userId: string): Promise<ClaimResult> {
+    const { data } = await this.sb.from("shopping_items").update({ claimed_by: userId }).eq("id", id).is("claimed_by", null).select("claimed_by");
+    if (data && data.length) return { ok: true };
+    const { data: cur } = await this.sb.from("shopping_items").select("claimed_by").eq("id", id).maybeSingle();
+    return { ok: false, claimedBy: (cur as { claimed_by: string | null } | null)?.claimed_by ?? null };
+  }
+  async unclaimShopping(id: string) {
+    await this.sb.from("shopping_items").update({ claimed_by: null }).eq("id", id);
+  }
+  async setShoppingDone(id: string, done: boolean, userId: string) {
+    const patch: Record<string, unknown> = { completed: done, completed_at: done ? new Date().toISOString() : null };
+    if (done) {
+      const { data: cur } = await this.sb.from("shopping_items").select("claimed_by").eq("id", id).maybeSingle();
+      if (!(cur as { claimed_by: string | null } | null)?.claimed_by) patch.claimed_by = userId;
+    }
+    await this.sb.from("shopping_items").update(patch).eq("id", id);
+  }
+
+  async listTasks(): Promise<TaskView[]> {
+    const [{ data }, users] = await Promise.all([this.sb.from("tasks").select("*").order("created_at"), this.userMap()]);
+    return ((data ?? []) as Task[]).map((t) => ({ ...t, creator: users.get(t.created_by ?? "") ?? null, assignee: t.assigned_to ? users.get(t.assigned_to) ?? null : null }));
+  }
+  async addTask(input: NewTaskInput) {
+    const { data } = await this.sb.from("tasks").insert({ title: input.title, notes: input.notes ?? null, due_date: input.due_date ?? null, created_by: input.created_by }).select("*").single();
+    const users = await this.userMap();
+    const t = data as Task;
+    return { ...t, creator: users.get(t.created_by ?? "") ?? null, assignee: null };
+  }
+  async claimTask(id: string, userId: string): Promise<ClaimResult> {
+    const { data } = await this.sb.from("tasks").update({ assigned_to: userId }).eq("id", id).is("assigned_to", null).select("assigned_to");
+    if (data && data.length) return { ok: true };
+    const { data: cur } = await this.sb.from("tasks").select("assigned_to").eq("id", id).maybeSingle();
+    return { ok: false, claimedBy: (cur as { assigned_to: string | null } | null)?.assigned_to ?? null };
+  }
+  async unclaimTask(id: string) {
+    await this.sb.from("tasks").update({ assigned_to: null }).eq("id", id);
+  }
+  async setTaskDone(id: string, done: boolean, userId: string) {
+    const patch: Record<string, unknown> = { completed: done, completed_at: done ? new Date().toISOString() : null };
+    if (done) {
+      const { data: cur } = await this.sb.from("tasks").select("assigned_to").eq("id", id).maybeSingle();
+      if (!(cur as { assigned_to: string | null } | null)?.assigned_to) patch.assigned_to = userId;
+    }
+    await this.sb.from("tasks").update(patch).eq("id", id);
+  }
+
+  async listInfo(): Promise<InfoGroup[]> {
+    const { data } = await this.sb.from("important_info").select("*").order("sort_order");
+    const groups: InfoGroup[] = [];
+    for (const item of (data ?? []) as ImportantInfo[]) {
+      let g = groups.find((x) => x.category === item.category);
+      if (!g) { g = { category: item.category, items: [] }; groups.push(g); }
+      g.items.push(item);
+    }
+    return groups;
+  }
+  async listAnnouncements(): Promise<AnnouncementView[]> {
+    const [{ data }, users] = await Promise.all([this.sb.from("announcements").select("*").order("is_pinned", { ascending: false }).order("created_at", { ascending: false }), this.userMap()]);
+    return ((data ?? []) as Announcement[]).map((a) => ({ ...a, creator: a.created_by ? users.get(a.created_by) ?? null : null }));
+  }
+  async addAnnouncement(input: NewAnnouncementInput) {
+    if (input.is_pinned) await this.sb.from("announcements").update({ is_pinned: false }).eq("is_pinned", true);
+    await this.sb.from("announcements").insert({ title: input.title, content: input.content ?? null, is_pinned: input.is_pinned, created_by: input.created_by });
+  }
+  async setAnnouncementPinned(id: string, pinned: boolean) {
+    if (pinned) await this.sb.from("announcements").update({ is_pinned: false }).eq("is_pinned", true);
+    await this.sb.from("announcements").update({ is_pinned: pinned }).eq("id", id);
+  }
+  async deleteAnnouncement(id: string) {
+    await this.sb.from("announcements").delete().eq("id", id);
+  }
+  async listActivity(limit = 40) {
+    const [{ data }, users] = await Promise.all([this.sb.from("activity").select("*").order("created_at", { ascending: false }).limit(limit), this.userMap()]);
+    return ((data ?? []) as import("@/lib/types").Activity[]).map((a) => ({ ...a, actor: a.actor_user_id ? users.get(a.actor_user_id) ?? null : null }));
+  }
+  async addActivity(actorId: string, type: string, text: string, entity?: { type: string; id: string }) {
+    await this.sb.from("activity").insert({ actor_user_id: actorId, type, entity_type: entity?.type ?? null, entity_id: entity?.id ?? null, metadata: { text } });
+  }
+}
+
+let instance: SupabaseRepo | null = null;
+export function getSupabaseRepo(): Repo {
+  instance ??= new SupabaseRepo();
+  return instance;
+}

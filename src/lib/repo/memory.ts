@@ -1,0 +1,330 @@
+import type {
+  Activity,
+  Announcement,
+  AppSettings,
+  FlightLeg,
+  FlightStatus,
+  ImportantInfo,
+  Pickup,
+  Plan,
+  PlanAttendee,
+  PublicUser,
+  ShoppingItem,
+  Task,
+  TravelGroup,
+  User,
+} from "@/lib/types";
+import { buildSeed } from "./seed";
+import type {
+  AnnouncementView,
+  ClaimResult,
+  InfoGroup,
+  NewAnnouncementInput,
+  NewPlanInput,
+  NewShoppingInput,
+  NewTaskInput,
+  NewTravelInput,
+  NewUserInput,
+  PlanView,
+  Repo,
+  ShoppingView,
+  TaskView,
+  TravelView,
+} from "./types";
+
+const nowIso = () => new Date().toISOString();
+const uid = () => globalThis.crypto.randomUUID();
+
+function toPublic(u: User): PublicUser {
+  const { pin_hash: _pin, ...rest } = u;
+  void _pin;
+  return rest;
+}
+
+class MemoryRepo implements Repo {
+  readonly kind = "memory" as const;
+  private d = buildSeed();
+
+  private user(id: string | null): PublicUser | null {
+    if (!id) return null;
+    const u = this.d.users.find((x) => x.id === id);
+    return u ? toPublic(u) : null;
+  }
+  private legsFor(tgId: string): FlightLeg[] {
+    return this.d.legs.filter((l) => l.travel_group_id === tgId).sort((a, b) => a.leg_order - b.leg_order);
+  }
+  private activeLeg(legs: FlightLeg[]): FlightLeg | null {
+    return legs.find((l) => l.status === "air") ?? legs[legs.length - 1] ?? null;
+  }
+  private travelView(tg: TravelGroup): TravelView {
+    const legs = this.legsFor(tg.id);
+    const memberIds = this.d.members.filter((m) => m.travel_group_id === tg.id).map((m) => m.user_id);
+    const active = this.activeLeg(legs);
+    const last = legs[legs.length - 1] ?? null;
+    const pickup = this.d.pickups.find((p) => p.travel_group_id === tg.id) ?? null;
+    return {
+      ...tg,
+      members: memberIds.map((id) => this.user(id)).filter(Boolean) as PublicUser[],
+      legs,
+      pickup,
+      driver: pickup?.driver_user_id ? this.user(pickup.driver_user_id) : null,
+      activeLeg: active,
+      arrivalIso: last?.estimated_arrival ?? last?.scheduled_arrival ?? null,
+    };
+  }
+
+  async getSettings(): Promise<AppSettings> {
+    return this.d.settings;
+  }
+  async updateSettings(patch: Partial<AppSettings>) {
+    this.d.settings = { ...this.d.settings, ...patch, updated_at: nowIso() };
+  }
+
+  async listUsers() {
+    return this.d.users.map(toPublic).sort((a, b) => a.name.localeCompare(b.name));
+  }
+  async getUser(id: string) {
+    return this.user(id);
+  }
+  async getUserWithPin(username: string) {
+    const u = this.d.users.find((x) => x.username.toLowerCase() === username.toLowerCase());
+    return u ? { id: u.id, pin_hash: u.pin_hash } : null;
+  }
+  async usernameTaken(username: string) {
+    return this.d.users.some((x) => x.username.toLowerCase() === username.toLowerCase());
+  }
+  async createUser(input: NewUserInput) {
+    const u: User = {
+      id: uid(), name: input.name, username: input.username, emoji: input.emoji,
+      pin_hash: input.pinHash, is_admin: input.is_admin ?? false, status: input.status ?? "here",
+      created_at: nowIso(), updated_at: nowIso(),
+    };
+    this.d.users.push(u);
+    return toPublic(u);
+  }
+  async setAdmin(id: string, isAdmin: boolean) {
+    const u = this.d.users.find((x) => x.id === id);
+    if (u) { u.is_admin = isAdmin; u.updated_at = nowIso(); }
+  }
+  async setUserStatus(id: string, status: User["status"]) {
+    const u = this.d.users.find((x) => x.id === id);
+    if (u) { u.status = status; u.updated_at = nowIso(); }
+  }
+
+  private planView(p: Plan): PlanView {
+    const attendees = this.d.planAttendees.filter((a) => a.plan_id === p.id).map((a) => this.user(a.user_id)).filter(Boolean) as PublicUser[];
+    return { ...p, attendees, creator: this.user(p.created_by) };
+  }
+  async listPlans() {
+    return this.d.plans
+      .slice()
+      .sort((a, b) => (a.date + (a.start_time ?? "")).localeCompare(b.date + (b.start_time ?? "")))
+      .map((p) => this.planView(p));
+  }
+  async getPlan(id: string) {
+    const p = this.d.plans.find((x) => x.id === id);
+    return p ? this.planView(p) : null;
+  }
+  async createPlan(input: NewPlanInput) {
+    const p: Plan = {
+      id: uid(), title: input.title, description: input.description ?? null, category: input.category,
+      date: input.date, start_time: input.start_time ?? null, location: input.location ?? null,
+      anyone_can_join: input.anyone_can_join, created_by: input.created_by, created_at: nowIso(), updated_at: nowIso(),
+    };
+    this.d.plans.push(p);
+    for (const uidv of new Set(input.attendees)) {
+      this.d.planAttendees.push({ id: uid(), plan_id: p.id, user_id: uidv, added_by: input.created_by, created_at: nowIso() });
+    }
+    return this.planView(p);
+  }
+  async deletePlan(id: string) {
+    this.d.plans = this.d.plans.filter((p) => p.id !== id);
+    this.d.planAttendees = this.d.planAttendees.filter((a) => a.plan_id !== id);
+  }
+  async joinPlan(planId: string, userId: string, addedBy: string) {
+    if (this.d.planAttendees.some((a) => a.plan_id === planId && a.user_id === userId)) return;
+    this.d.planAttendees.push({ id: uid(), plan_id: planId, user_id: userId, added_by: addedBy, created_at: nowIso() } as PlanAttendee);
+  }
+  async leavePlan(planId: string, userId: string) {
+    this.d.planAttendees = this.d.planAttendees.filter((a) => !(a.plan_id === planId && a.user_id === userId));
+  }
+
+  async listTravel() {
+    return this.d.travel.map((t) => this.travelView(t)).sort((a, b) => (a.arrivalIso ?? "").localeCompare(b.arrivalIso ?? ""));
+  }
+  async getTravel(id: string) {
+    const t = this.d.travel.find((x) => x.id === id);
+    return t ? this.travelView(t) : null;
+  }
+  async createTravel(input: NewTravelInput) {
+    const tg: TravelGroup = {
+      id: uid(), title: input.title, status: "upcoming", accommodation: null, luggage_notes: null,
+      general_notes: input.notes ?? null, created_by: input.created_by, created_at: nowIso(), updated_at: nowIso(),
+    };
+    this.d.travel.push(tg);
+    for (const u of input.travellers) this.d.members.push({ travel_group_id: tg.id, user_id: u });
+    let firstLegId: string | null = null;
+    for (const l of input.legs) {
+      const leg: FlightLeg = {
+        id: uid(), travel_group_id: tg.id, leg_order: l.leg_order, provider: l.provider ?? "demo",
+        provider_flight_id: l.provider_flight_id ?? null, flight_number: l.flight_number,
+        airline_code: l.airline_code ?? null, airline_name: l.airline_name ?? null,
+        origin_airport: l.origin_airport, origin_city: l.origin_city ?? null,
+        destination_airport: l.destination_airport, destination_city: l.destination_city ?? null,
+        scheduled_departure: l.scheduled_departure ?? null, estimated_departure: null, actual_departure: null,
+        scheduled_arrival: l.scheduled_arrival ?? null, estimated_arrival: l.estimated_arrival ?? null, actual_arrival: null,
+        terminal_departure: l.terminal_departure ?? null, gate_departure: null, terminal_arrival: null, gate_arrival: null,
+        aircraft_type: l.aircraft_type ?? null, aircraft_type_code: l.aircraft_type_code ?? null,
+        aircraft_registration: l.aircraft_registration ?? null, status: l.status ?? "scheduled", progress: 0,
+        delay_minutes: 0, last_synced_at: nowIso(), created_at: nowIso(), updated_at: nowIso(),
+      };
+      this.d.legs.push(leg);
+      firstLegId ??= leg.id;
+    }
+    if (input.pickup) {
+      this.d.pickups.push({ id: uid(), travel_group_id: tg.id, flight_leg_id: firstLegId, requested: true, driver_user_id: null, notes: null, created_at: nowIso(), updated_at: nowIso() });
+    }
+    return this.travelView(tg);
+  }
+  async setTravelStatus(id: string, status: TravelGroup["status"]) {
+    const t = this.d.travel.find((x) => x.id === id);
+    if (t) { t.status = status; t.updated_at = nowIso(); }
+  }
+  async setLegStatus(legId: string, status: FlightStatus, progress: number | null) {
+    const l = this.d.legs.find((x) => x.id === legId);
+    if (l) { l.status = status; if (progress != null) l.progress = progress; l.updated_at = nowIso(); }
+  }
+  async syncLeg(legId: string, patch: Partial<FlightLeg>) {
+    const l = this.d.legs.find((x) => x.id === legId);
+    if (l) Object.assign(l, patch, { last_synced_at: nowIso(), updated_at: nowIso() });
+  }
+
+  private pickupOf(tgId: string): Pickup | undefined {
+    return this.d.pickups.find((p) => p.travel_group_id === tgId);
+  }
+  async requestPickup(travelGroupId: string, flightLegId: string | null) {
+    const existing = this.pickupOf(travelGroupId);
+    if (existing) { existing.requested = true; existing.updated_at = nowIso(); return; }
+    this.d.pickups.push({ id: uid(), travel_group_id: travelGroupId, flight_leg_id: flightLegId, requested: true, driver_user_id: null, notes: null, created_at: nowIso(), updated_at: nowIso() });
+  }
+  async claimPickup(travelGroupId: string, userId: string): Promise<ClaimResult> {
+    const p = this.pickupOf(travelGroupId);
+    if (!p) return { ok: false, claimedBy: null };
+    if (p.driver_user_id) return { ok: false, claimedBy: p.driver_user_id };
+    p.driver_user_id = userId; p.updated_at = nowIso();
+    return { ok: true };
+  }
+  async releasePickup(travelGroupId: string) {
+    const p = this.pickupOf(travelGroupId);
+    if (p) { p.driver_user_id = null; p.updated_at = nowIso(); }
+  }
+
+  private shoppingView(s: ShoppingItem): ShoppingView {
+    return { ...s, creator: this.user(s.created_by), claimer: this.user(s.claimed_by) };
+  }
+  async listShopping() {
+    return this.d.shopping.map((s) => this.shoppingView(s));
+  }
+  async addShopping(input: NewShoppingInput) {
+    const s: ShoppingItem = {
+      id: uid(), item: input.item, quantity: input.quantity, category: input.category, notes: input.notes ?? null,
+      created_by: input.created_by, claimed_by: null, completed: false, completed_at: null, created_at: nowIso(), updated_at: nowIso(),
+    };
+    this.d.shopping.push(s);
+    return this.shoppingView(s);
+  }
+  async claimShopping(id: string, userId: string): Promise<ClaimResult> {
+    const s = this.d.shopping.find((x) => x.id === id);
+    if (!s) return { ok: false, claimedBy: null };
+    if (s.claimed_by) return { ok: false, claimedBy: s.claimed_by };
+    s.claimed_by = userId; s.updated_at = nowIso();
+    return { ok: true };
+  }
+  async unclaimShopping(id: string) {
+    const s = this.d.shopping.find((x) => x.id === id);
+    if (s) { s.claimed_by = null; s.updated_at = nowIso(); }
+  }
+  async setShoppingDone(id: string, done: boolean, userId: string) {
+    const s = this.d.shopping.find((x) => x.id === id);
+    if (s) { s.completed = done; s.completed_at = done ? nowIso() : null; if (done && !s.claimed_by) s.claimed_by = userId; s.updated_at = nowIso(); }
+  }
+
+  private taskView(t: Task): TaskView {
+    return { ...t, creator: this.user(t.created_by), assignee: this.user(t.assigned_to) };
+  }
+  async listTasks() {
+    return this.d.tasks.map((t) => this.taskView(t));
+  }
+  async addTask(input: NewTaskInput) {
+    const t: Task = {
+      id: uid(), title: input.title, notes: input.notes ?? null, due_date: input.due_date ?? null, due_time: null,
+      created_by: input.created_by, assigned_to: null, completed: false, completed_at: null, created_at: nowIso(), updated_at: nowIso(),
+    };
+    this.d.tasks.push(t);
+    return this.taskView(t);
+  }
+  async claimTask(id: string, userId: string): Promise<ClaimResult> {
+    const t = this.d.tasks.find((x) => x.id === id);
+    if (!t) return { ok: false, claimedBy: null };
+    if (t.assigned_to) return { ok: false, claimedBy: t.assigned_to };
+    t.assigned_to = userId; t.updated_at = nowIso();
+    return { ok: true };
+  }
+  async unclaimTask(id: string) {
+    const t = this.d.tasks.find((x) => x.id === id);
+    if (t) { t.assigned_to = null; t.updated_at = nowIso(); }
+  }
+  async setTaskDone(id: string, done: boolean, userId: string) {
+    const t = this.d.tasks.find((x) => x.id === id);
+    if (t) { t.completed = done; t.completed_at = done ? nowIso() : null; if (done && !t.assigned_to) t.assigned_to = userId; t.updated_at = nowIso(); }
+  }
+
+  async listInfo(): Promise<InfoGroup[]> {
+    const groups: InfoGroup[] = [];
+    for (const item of [...this.d.info].sort((a, b) => a.sort_order - b.sort_order)) {
+      let g = groups.find((x) => x.category === item.category);
+      if (!g) { g = { category: item.category, items: [] }; groups.push(g); }
+      g.items.push(item);
+    }
+    return groups;
+  }
+  async listAnnouncements(): Promise<AnnouncementView[]> {
+    return [...this.d.announcements]
+      .sort((a, b) => Number(b.is_pinned) - Number(a.is_pinned) || b.created_at.localeCompare(a.created_at))
+      .map((a) => ({ ...a, creator: this.user(a.created_by) }));
+  }
+  async addAnnouncement(input: NewAnnouncementInput) {
+    if (input.is_pinned) this.d.announcements.forEach((a) => (a.is_pinned = false));
+    this.d.announcements.unshift({
+      id: uid(), title: input.title, content: input.content ?? null, is_pinned: input.is_pinned,
+      starts_at: null, expires_at: null, created_by: input.created_by, created_at: nowIso(), updated_at: nowIso(),
+    } as Announcement);
+  }
+  async setAnnouncementPinned(id: string, pinned: boolean) {
+    if (pinned) this.d.announcements.forEach((a) => (a.is_pinned = false));
+    const a = this.d.announcements.find((x) => x.id === id);
+    if (a) { a.is_pinned = pinned; a.updated_at = nowIso(); }
+  }
+  async deleteAnnouncement(id: string) {
+    this.d.announcements = this.d.announcements.filter((a) => a.id !== id);
+  }
+  async listActivity(limit = 40) {
+    return [...this.d.activity]
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+      .slice(0, limit)
+      .map((a) => ({ ...a, actor: this.user(a.actor_user_id) }));
+  }
+  async addActivity(actorId: string, type: string, text: string, entity?: { type: string; id: string }) {
+    this.d.activity.unshift({
+      id: uid(), actor_user_id: actorId, type, entity_type: entity?.type ?? null, entity_id: entity?.id ?? null,
+      metadata: { text }, created_at: nowIso(),
+    } as Activity);
+  }
+}
+
+// Persist across HMR / requests in dev.
+const g = globalThis as unknown as { __zimMemoryRepo?: MemoryRepo };
+export function getMemoryRepo(): Repo {
+  g.__zimMemoryRepo ??= new MemoryRepo();
+  return g.__zimMemoryRepo;
+}

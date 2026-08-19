@@ -26,6 +26,7 @@ export interface User {
   name: string;
   username: string;
   emoji: string;
+  pin_hash: string;
   is_admin: boolean;
   status: LocationStatus;
   created_at: string;
@@ -33,7 +34,7 @@ export interface User {
 }
 
 /** Public projection of a user — never includes pin_hash. */
-export type PublicUser = Omit<User, never>;
+export type PublicUser = Omit<User, "pin_hash">;
 
 export interface Plan {
   id: string;
@@ -188,7 +189,7 @@ export type ActivityType =
 export interface Activity {
   id: string;
   actor_user_id: string;
-  type: ActivityType;
+  type: string;
   entity_type: string | null;
   entity_id: string | null;
   metadata: Record<string, unknown> | null;
