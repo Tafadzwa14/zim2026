@@ -2,7 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import type { Dashboard } from "@/lib/dashboard";
 import { categoryOf, GOGO_BIRTHDAY } from "@/lib/display";
-import { daysUntil, fmtDayShortUpper, fmtTime, fmtTime24, timeAgo, tripDateOf } from "@/lib/format";
+import { fmtDayShortUpper, fmtTime, fmtTime24, timeAgo, tripDateOf } from "@/lib/format";
 import { FlightCard } from "@/components/flight-card";
 import { LiveDot, SectionHeader } from "@/components/ui";
 import { PickupControl, ShoppingItemRow, TaskItemRow } from "@/components/interactive";
@@ -76,33 +76,12 @@ function FlightBanner({ href, emoji, eyebrow, headline, sub }: { href: string; e
 }
 
 /**
- * Personalised hero banner keyed off the viewer:
- * - a traveller (not yet in Zimbabwe) sees their own flight — countdown to
- *   departure, or live arrival once airborne;
- * - someone already in Zimbabwe sees the next airport run (next arrival +
- *   flight + whether a driver is still needed).
- * Falls back to the family's next arrival, then the wedding countdown.
+ * Hero banner keyed off the calendar, not the viewer's location:
+ * the next airport run (next arrival + flight + whether a driver is still
+ * needed), falling back to the next calendar event.
  */
-export function MyBanner({ d, me }: { d: Dashboard; me: PublicUser }) {
-  // A traveller's own group (still upcoming or in the air).
-  const mine = d.travel.find((t) => t.status !== "arrived" && t.members.some((m) => m.id === me.id));
-
-  if (mine && me.status !== "here") {
-    const active = mine.activeLeg;
-    if (me.status === "travelling" && active?.status === "air") {
-      const arr = active.estimated_arrival ?? active.scheduled_arrival;
-      return <FlightBanner href={`/flights/${mine.id}`} emoji="✈️" eyebrow="You're in the air" headline={`${active.origin_airport} → ${active.destination_airport}`} sub={`${active.flight_number} · lands ${fmtTime(arr)}`} />;
-    }
-    const first = mine.legs[0];
-    const last = mine.legs[mine.legs.length - 1];
-    const dep = first?.estimated_departure ?? first?.scheduled_departure ?? null;
-    const route = first && last ? `${first.origin_airport} → ${last.destination_airport}` : mine.title;
-    const left = dep ? daysUntil(tripDateOf(dep)) : null;
-    const headline = left == null ? route : left === 0 ? "You fly today ✈️" : `${left} day${left === 1 ? "" : "s"} to departure`;
-    return <FlightBanner href={`/flights/${mine.id}`} emoji="🧳" eyebrow={dep ? `You fly · ${fmtDayShortUpper(dep)}` : "Your trip"} headline={headline} sub={first ? `${first.flight_number} · ${route}` : "Flight details coming soon"} />;
-  }
-
-  // In Zimbabwe (or no trip of your own): the next airport run.
+export function MyBanner({ d }: { d: Dashboard }) {
+  // The next airport run, straight from the travel calendar.
   const next = d.arrivingToday[0] ?? d.comingNext[0] ?? null;
   if (next) {
     const soonest = Boolean(d.arrivingToday[0]);
@@ -127,25 +106,8 @@ function FlightStatTile({ href, eyebrow, value, sub }: { href: string; eyebrow: 
   );
 }
 
-/** Desktop counterpart of MyBanner — same personalisation, compact stat-tile shape. */
-export function MyStatTile({ d, me }: { d: Dashboard; me: PublicUser }) {
-  const mine = d.travel.find((t) => t.status !== "arrived" && t.members.some((m) => m.id === me.id));
-
-  if (mine && me.status !== "here") {
-    const active = mine.activeLeg;
-    if (me.status === "travelling" && active?.status === "air") {
-      const arr = active.estimated_arrival ?? active.scheduled_arrival;
-      return <FlightStatTile href={`/flights/${mine.id}`} eyebrow="✈️ You're flying" value={`${active.origin_airport}→${active.destination_airport}`} sub={`${active.flight_number} · lands ${fmtTime(arr)}`} />;
-    }
-    const first = mine.legs[0];
-    const last = mine.legs[mine.legs.length - 1];
-    const dep = first?.estimated_departure ?? first?.scheduled_departure ?? null;
-    const left = dep ? daysUntil(tripDateOf(dep)) : null;
-    const value = left == null ? "Your trip" : left === 0 ? "Today" : `${left} day${left === 1 ? "" : "s"}`;
-    const route = first && last ? `${first.origin_airport}→${last.destination_airport}` : mine.title;
-    return <FlightStatTile href={`/flights/${mine.id}`} eyebrow="🧳 You fly" value={value} sub={first ? `${first.flight_number} · ${route}` : "Flight TBC"} />;
-  }
-
+/** Desktop counterpart of MyBanner — the next airport run, compact stat-tile shape. */
+export function MyStatTile({ d }: { d: Dashboard }) {
   const next = d.arrivingToday[0] ?? d.comingNext[0] ?? null;
   if (next) {
     const soonest = Boolean(d.arrivingToday[0]);

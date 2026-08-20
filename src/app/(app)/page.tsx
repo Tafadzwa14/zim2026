@@ -67,7 +67,7 @@ export default async function HomePage() {
           </div>
         </header>
         <div className="disp mt-0.5 text-lg font-bold">The crew is assembling ✈️</div>
-        <MyBanner d={d} me={me} />
+        <MyBanner d={d} />
         <NeedsMe items={nudges} className="mt-3" />
 
         <div>
@@ -84,7 +84,7 @@ export default async function HomePage() {
               <div className="mono mt-1 text-xs uppercase tracking-wide text-muted">{fmtWeekdayLong(new Date())}</div>
             </div>
             <div className="grid min-w-[520px] flex-1 grid-cols-3 gap-3">
-              <MyStatTile d={d} me={me} />
+              <MyStatTile d={d} />
               <Link href="/flights" className="zc-card flex min-h-[88px] flex-col p-4">
                 <div className="mono text-[10px] uppercase tracking-wide text-muted">✈️ In the air</div>
                 <div className="disp mt-auto text-[26px] font-extrabold">{activeFlights.length === 1 ? activeFlights[0].activeLeg!.flight_number : activeFlights.length}</div>
