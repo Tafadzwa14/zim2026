@@ -29,9 +29,17 @@ Downloads); section 39A is the approved design system.
 - Use the design tokens (`bg-paper`, `text-ink`, `text-muted`, `bg-honey`,
   `text-berry`, `bg-flight`, `text-good`, `.disp`, `.mono`, `.zc-card`,
   `.zc-btn`, `.zc-chip`, `.zc-input`) rather than raw hex. Both light and
-  dark themes are token-driven.
-- No Zimbabwe flag motif or flag palette (removed at design review). Warmth
-  comes from honey + berry; greens are semantic status only.
+  dark themes are token-driven. Theme-aware gradients live in the
+  `--grad-wed`, `--grad-dinner`, `--grad-onboard`, and `--flight-radial`
+  variables — reference those from inline styles, never a baked-in hex, so
+  banners flip with the mode.
+- Palette is cool (approved v2): light is **Slate Editorial** (cool
+  off-white paper, slate ink, teal primary), dark is **Midnight** (charcoal-
+  navy paper, cyan primary). NOTE the accent token names are legacy: `--honey`
+  now holds the teal/cyan primary and `--berry` a cooled pink; the wedding
+  countdown (plum → pink) is the one warm moment. `--flight` is a cool-dark
+  navy hero. Greens are semantic status only. No Zimbabwe flag motif or flag
+  palette (removed at design review).
 - Australian English in copy. Concise, friendly, family tone (spec 69).
 
 ## Layout
@@ -43,10 +51,11 @@ Downloads); section 39A is the approved design system.
 ## Status
 
 - Done: foundation — scaffold, design system, Supabase clients + schema +
-  RLS + seed, flight provider abstraction, setup-gated home.
+  RLS + seed, flight provider abstraction, setup-gated home, dark mode
+  (Slate light / Midnight dark, token-driven).
 - Next: identity/onboarding (PIN hashing, reclaim), data-access layer +
   server actions, port screens (home, flights, calendar, family, more),
-  Realtime, admin, dark mode + tablet, PWA.
+  Realtime, admin, tablet, PWA.
 
 ## Commands
 

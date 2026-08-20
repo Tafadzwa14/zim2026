@@ -1,28 +1,152 @@
 import Link from "next/link";
-import { getDashboard } from "@/lib/dashboard";
+import { getDashboard, type Dashboard } from "@/lib/dashboard";
 import { getCurrentUser } from "@/lib/identity";
 import { categoryOf } from "@/lib/display";
-import { daysUntil, fmtDayShortUpper, fmtTime, fmtWeekdayLong, timeAgo } from "@/lib/format";
+import { daysUntil, fmtDayShortUpper, fmtTime, fmtTime24, fmtWeekdayLong, timeAgo, tripDateOf } from "@/lib/format";
 import { FlightCard } from "@/components/flight-card";
 import { LiveDot, SectionHeader } from "@/components/ui";
 import { ThemeToggle } from "@/components/providers";
 import { PickupControl, ShoppingItemRow, TaskItemRow } from "@/components/interactive";
-import type { PlanView, TravelView } from "@/lib/repo/types";
+import type { TravelView } from "@/lib/repo/types";
 import type { PublicUser } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-function WeddingBanner({ url, days }: { url: string; days: number }) {
+interface CalEv { icon: string; title: string; date: string; time: string | null; href: string }
+
+/** The soonest thing on the calendar (plans + arrivals + wedding), from today on. */
+function nextEvent(d: Dashboard): CalEv | null {
+  const evs: CalEv[] = [];
+  d.plans.forEach((p) => evs.push({ icon: categoryOf(p.category).icon, title: p.title, date: p.date, time: p.start_time, href: `/plans/${p.id}` }));
+  d.travel.forEach((t) => { if (t.arrivalIso) evs.push({ icon: "✈️", title: `${t.title} arrive`, date: tripDateOf(t.arrivalIso), time: fmtTime24(t.arrivalIso), href: `/flights/${t.id}` }); });
+  evs.push({ icon: "💍", title: "Wedding / Roora", date: d.settings.wedding_date, time: "11:00", href: d.settings.wedding_url || "/calendar" });
+  return evs.filter((e) => e.date >= d.today).sort((a, b) => (a.date + (a.time ?? "")).localeCompare(b.date + (b.time ?? "")))[0] ?? null;
+}
+
+function evWhen(ev: CalEv, today: string): string {
+  const iso = `${ev.date}T${ev.time ?? "00:00"}:00+02:00`;
+  return ev.date === today ? (ev.time ? fmtTime(iso) : "Today") : fmtDayShortUpper(iso);
+}
+
+/** Wedding-toned fallback banner: the next calendar event. */
+function EventBanner({ ev, today }: { ev: CalEv | null; today: string }) {
   return (
-    <a href={url || "#"} target={url ? "_blank" : undefined} rel="noreferrer" className="relative mt-1 flex w-full items-center gap-3.5 overflow-hidden rounded-[22px] p-[18px_20px] text-left text-white shadow-[0_16px_28px_-16px_rgba(199,68,113,.6)]" style={{ background: "linear-gradient(115deg,#e0863a,#d9822b 42%,#c74471)" }}>
+    <Link href={ev?.href ?? "/calendar"} className="relative mt-1 flex w-full items-center gap-3.5 overflow-hidden rounded-[22px] p-[18px_20px] text-left text-white shadow-[0_16px_28px_-16px_rgba(60,37,64,.6)]" style={{ background: "var(--grad-wed)" }}>
       <span className="pointer-events-none absolute -right-8 -top-12 h-44 w-44 rounded-full" style={{ background: "radial-gradient(circle,rgba(255,255,255,.28),transparent 70%)" }} />
-      <span className="relative text-3xl" aria-hidden>💍</span>
-      <span className="relative flex flex-col">
-        <span className="text-[11px] font-extrabold uppercase tracking-[0.09em] opacity-90">The big day · 12 September</span>
-        <span className="disp mt-1 text-[22px] font-extrabold leading-none">{days} days to go</span>
+      <span className="relative text-3xl" aria-hidden>{ev?.icon ?? "📅"}</span>
+      <span className="relative flex min-w-0 flex-col">
+        <span className="text-[11px] font-extrabold uppercase tracking-[0.09em] opacity-90">{ev ? `Next up · ${evWhen(ev, today)}` : "Calendar"}</span>
+        <span className="disp mt-1 truncate text-[22px] font-extrabold leading-none">{ev?.title ?? "Nothing scheduled yet"}</span>
       </span>
       <span className="relative ml-auto text-2xl opacity-90" aria-hidden>›</span>
-    </a>
+    </Link>
+  );
+}
+
+/** Flight-toned banner shell: same footprint as WeddingBanner, links into a group. */
+function FlightBanner({ href, emoji, eyebrow, headline, sub }: { href: string; emoji: string; eyebrow: string; headline: string; sub?: string }) {
+  return (
+    <Link href={href} className="relative mt-1 flex w-full items-center gap-3.5 overflow-hidden rounded-[22px] bg-flight p-[18px_20px] text-left text-white shadow-[0_16px_28px_-16px_rgba(12,20,32,.7)]">
+      <span className="pointer-events-none absolute -right-8 -top-12 h-44 w-44 rounded-full" style={{ background: "var(--flight-radial)" }} />
+      <span className="relative text-3xl" aria-hidden>{emoji}</span>
+      <span className="relative flex min-w-0 flex-col">
+        <span className="text-[11px] font-extrabold uppercase tracking-[0.09em] text-[var(--flight-label)]">{eyebrow}</span>
+        <span className="disp mt-1 truncate text-[22px] font-extrabold leading-none">{headline}</span>
+        {sub && <span className="mono mt-1.5 truncate text-[11.5px] font-semibold text-[var(--flight-label)]">{sub}</span>}
+      </span>
+      <span className="relative ml-auto text-2xl opacity-90" aria-hidden>›</span>
+    </Link>
+  );
+}
+
+/**
+ * Personalised hero banner keyed off the viewer:
+ * - a traveller (not yet in Zimbabwe) sees their own flight — countdown to
+ *   departure, or live arrival once airborne;
+ * - someone already in Zimbabwe sees the next airport run (next arrival +
+ *   flight + whether a driver is still needed).
+ * Falls back to the family's next arrival, then the wedding countdown.
+ */
+function MyBanner({ d, me }: { d: Dashboard; me: PublicUser }) {
+  // A traveller's own group (still upcoming or in the air).
+  const mine = d.travel.find((t) => t.status !== "arrived" && t.members.some((m) => m.id === me.id));
+
+  if (mine && me.status !== "here") {
+    const active = mine.activeLeg;
+    if (me.status === "travelling" && active?.status === "air") {
+      const arr = active.estimated_arrival ?? active.scheduled_arrival;
+      return <FlightBanner href={`/flights/${mine.id}`} emoji="✈️" eyebrow="You're in the air" headline={`${active.origin_airport} → ${active.destination_airport}`} sub={`${active.flight_number} · lands ${fmtTime(arr)}`} />;
+    }
+    const first = mine.legs[0];
+    const last = mine.legs[mine.legs.length - 1];
+    const dep = first?.estimated_departure ?? first?.scheduled_departure ?? null;
+    const route = first && last ? `${first.origin_airport} → ${last.destination_airport}` : mine.title;
+    const left = dep ? daysUntil(tripDateOf(dep)) : null;
+    const headline = left == null ? route : left === 0 ? "You fly today ✈️" : `${left} day${left === 1 ? "" : "s"} to departure`;
+    return <FlightBanner href={`/flights/${mine.id}`} emoji="🧳" eyebrow={dep ? `You fly · ${fmtDayShortUpper(dep)}` : "Your trip"} headline={headline} sub={first ? `${first.flight_number} · ${route}` : "Flight details coming soon"} />;
+  }
+
+  // In Zimbabwe (or no trip of your own): the next airport run.
+  const next = d.arrivingToday[0] ?? d.comingNext[0] ?? null;
+  if (next) {
+    const soonest = Boolean(d.arrivingToday[0]);
+    const leg = next.activeLeg;
+    const needsDriver = Boolean(next.pickup?.requested && !next.driver);
+    const sub = [leg?.flight_number, `arrives ${soonest ? fmtTime(next.arrivalIso) : fmtDayShortUpper(next.arrivalIso)}`, needsDriver ? "driver needed" : null].filter(Boolean).join(" · ");
+    return <FlightBanner href={`/flights/${next.id}`} emoji="🛬" eyebrow={soonest ? "Next airport run · today" : `Next airport run · ${fmtDayShortUpper(next.arrivalIso)}`} headline={`${next.members[0]?.emoji ?? "✈️"} ${next.title}`} sub={sub} />;
+  }
+
+  // Nothing flight-related to surface — fall back to the next calendar event.
+  return <EventBanner ev={nextEvent(d)} today={d.today} />;
+}
+
+/** Flight-toned stat tile for the desktop command-centre stat bar. */
+function FlightStatTile({ href, eyebrow, value, sub }: { href: string; eyebrow: string; value: string; sub: string }) {
+  return (
+    <Link href={href} className="flex min-h-[88px] flex-col overflow-hidden rounded-2xl bg-flight p-4 text-white">
+      <div className="mono truncate text-[10px] font-medium uppercase tracking-wide text-[var(--flight-label)]">{eyebrow}</div>
+      <div className="disp mt-auto truncate text-[26px] font-extrabold">{value}</div>
+      <div className="truncate text-[13px] font-extrabold text-[var(--flight-label)]">{sub}</div>
+    </Link>
+  );
+}
+
+/** Desktop counterpart of MyBanner — same personalisation, compact stat-tile shape. */
+function MyStatTile({ d, me }: { d: Dashboard; me: PublicUser }) {
+  const mine = d.travel.find((t) => t.status !== "arrived" && t.members.some((m) => m.id === me.id));
+
+  if (mine && me.status !== "here") {
+    const active = mine.activeLeg;
+    if (me.status === "travelling" && active?.status === "air") {
+      const arr = active.estimated_arrival ?? active.scheduled_arrival;
+      return <FlightStatTile href={`/flights/${mine.id}`} eyebrow="✈️ You're flying" value={`${active.origin_airport}→${active.destination_airport}`} sub={`${active.flight_number} · lands ${fmtTime(arr)}`} />;
+    }
+    const first = mine.legs[0];
+    const last = mine.legs[mine.legs.length - 1];
+    const dep = first?.estimated_departure ?? first?.scheduled_departure ?? null;
+    const left = dep ? daysUntil(tripDateOf(dep)) : null;
+    const value = left == null ? "Your trip" : left === 0 ? "Today" : `${left} day${left === 1 ? "" : "s"}`;
+    const route = first && last ? `${first.origin_airport}→${last.destination_airport}` : mine.title;
+    return <FlightStatTile href={`/flights/${mine.id}`} eyebrow="🧳 You fly" value={value} sub={first ? `${first.flight_number} · ${route}` : "Flight TBC"} />;
+  }
+
+  const next = d.arrivingToday[0] ?? d.comingNext[0] ?? null;
+  if (next) {
+    const soonest = Boolean(d.arrivingToday[0]);
+    const needsDriver = Boolean(next.pickup?.requested && !next.driver);
+    const value = soonest ? fmtTime(next.arrivalIso) : fmtDayShortUpper(next.arrivalIso);
+    const sub = needsDriver ? `${next.title} · driver needed` : `${next.members[0]?.emoji ?? "✈️"} ${next.title}`;
+    return <FlightStatTile href={`/flights/${next.id}`} eyebrow={soonest ? "🛬 Airport run · today" : "🛬 Next airport run"} value={value} sub={sub} />;
+  }
+
+  // Fall back to the next calendar event.
+  const ev = nextEvent(d);
+  return (
+    <Link href={ev?.href ?? "/calendar"} className="flex min-h-[88px] flex-col overflow-hidden rounded-2xl p-4 text-white" style={{ background: "var(--grad-wed)" }}>
+      <div className="mono truncate text-[10px] font-medium uppercase tracking-wide opacity-90">{ev ? `${ev.icon} Next up` : "📅 Calendar"}</div>
+      <div className="disp mt-auto truncate text-[26px] font-extrabold">{ev ? evWhen(ev, d.today) : "Open"}</div>
+      <div className="truncate text-[13px] font-extrabold opacity-90">{ev?.title ?? "See the agenda"}</div>
+    </Link>
   );
 }
 
@@ -97,7 +221,6 @@ function WhosHere({ here }: { here: PublicUser[] }) {
 export default async function HomePage() {
   const [d, me] = await Promise.all([getDashboard(), getCurrentUser()]);
   if (!me) return null;
-  const days = daysUntil(d.settings.wedding_date);
   const active = d.active[0]?.activeLeg ? d.active[0] : null;
 
   // command-centre event rows
@@ -123,7 +246,7 @@ export default async function HomePage() {
           </div>
         </header>
         <div className="disp mt-0.5 text-lg font-bold">The crew is assembling ✈️</div>
-        <WeddingBanner url={d.settings.wedding_url} days={days} />
+        <MyBanner d={d} me={me} />
 
         <div className="md:columns-2 md:gap-x-5">
           {active && (
@@ -147,7 +270,7 @@ export default async function HomePage() {
           </section>
 
           <section className="break-inside-avoid">
-            <SectionHeader meta={<Link href="/family">{d.here.length} in Zimbabwe</Link>}>Who&apos;s here</SectionHeader>
+            <SectionHeader meta={<Link href="/family">{d.here.length} in Zimbabwe</Link>}>Who&apos;s where</SectionHeader>
             <WhosHere here={d.here} />
           </section>
 
@@ -168,7 +291,7 @@ export default async function HomePage() {
           {d.dinner && (
             <section className="break-inside-avoid">
               <SectionHeader>Tonight</SectionHeader>
-              <Link href={`/plans/${d.dinner.id}`} className="flex items-center gap-3.5 rounded-[22px] p-[17px] text-white shadow-[0_14px_26px_-18px_rgba(168,53,96,.7)]" style={{ background: "linear-gradient(150deg,#c74471,#a83560)" }}>
+              <Link href={`/plans/${d.dinner.id}`} className="flex items-center gap-3.5 rounded-[22px] p-[17px] text-white shadow-[0_14px_26px_-18px_rgba(30,45,70,.6)]" style={{ background: "var(--grad-dinner)" }}>
                 <span className="text-3xl" aria-hidden>🍲</span>
                 <span><span className="disp block text-[17px] font-extrabold">{d.dinner.title}</span><span className="block text-[12.5px] font-bold opacity-90">{d.dinner.location}</span></span>
                 <span className="mono ml-auto text-[15px] font-semibold">{fmtTime(`${d.dinner.date}T${d.dinner.start_time}:00+02:00`)}</span>
@@ -196,11 +319,7 @@ export default async function HomePage() {
               <div className="mono mt-1 text-xs uppercase tracking-wide text-muted">{fmtWeekdayLong(new Date())}</div>
             </div>
             <div className="grid min-w-[520px] flex-1 grid-cols-4 gap-3">
-              <a href={d.settings.wedding_url || "#"} target="_blank" rel="noreferrer" className="flex min-h-[88px] flex-col rounded-2xl p-4 text-white" style={{ background: "linear-gradient(120deg,#e0863a,#d9822b 45%,#c74471)" }}>
-                <div className="mono text-[10px] font-medium uppercase tracking-wide opacity-90">💍 Wedding</div>
-                <div className="disp mt-auto text-[26px] font-extrabold">{days} days</div>
-                <div className="text-[13px] font-extrabold opacity-90">12 September · roora</div>
-              </a>
+              <MyStatTile d={d} me={me} />
               <Link href="/flights" className="zc-card flex min-h-[88px] flex-col p-4">
                 <div className="mono text-[10px] uppercase tracking-wide text-muted">✈️ In the air</div>
                 <div className="disp mt-auto text-[26px] font-extrabold">{active ? active.activeLeg!.flight_number : "0"}</div>
@@ -233,7 +352,7 @@ export default async function HomePage() {
               <Panel title="Coming up" meta="Next few days" link={{ label: "Open calendar", href: "/calendar" }}>
                 {comingUp.length ? comingUp.map((e, i) => <EventRow key={i} icon={e.icon} title={e.title} lead={fmtDayShortUpper(`${e.date}T00:00:00+02:00`)} href={e.href} />) : <PanelEmpty text="Nothing coming up" />}
               </Panel>
-              <Panel title="Who's here" meta={`${d.here.length} in Zimbabwe`}>
+              <Panel title="Who's where" meta={`${d.here.length} in Zimbabwe`}>
                 <div className="px-3.5 pb-1"><WhosHere here={d.here} /></div>
               </Panel>
             </div>

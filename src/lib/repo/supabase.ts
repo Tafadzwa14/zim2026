@@ -277,10 +277,16 @@ class SupabaseRepo implements Repo {
     return ((data ?? []) as ShoppingItem[]).map((s) => ({ ...s, creator: users.get(s.created_by ?? "") ?? null, claimer: s.claimed_by ? users.get(s.claimed_by) ?? null : null }));
   }
   async addShopping(input: NewShoppingInput) {
-    const { data } = await this.sb.from("shopping_items").insert({ item: input.item, quantity: input.quantity, category: input.category, notes: input.notes ?? null, created_by: input.created_by }).select("*").single();
+    const { data } = await this.sb.from("shopping_items").insert({ item: input.item, quantity: input.quantity, category: input.category, notes: input.notes ?? null, created_by: input.created_by, claimed_by: input.claimed_by ?? null }).select("*").single();
     const users = await this.userMap();
     const s = data as ShoppingItem;
     return { ...s, creator: users.get(s.created_by ?? "") ?? null, claimer: null };
+  }
+  async setShoppingQuantity(id: string, quantity: number) {
+    await this.sb.from("shopping_items").update({ quantity: Math.max(1, Math.floor(quantity)) }).eq("id", id);
+  }
+  async assignShopping(id: string, userId: string | null) {
+    await this.sb.from("shopping_items").update({ claimed_by: userId }).eq("id", id);
   }
   async claimShopping(id: string, userId: string): Promise<ClaimResult> {
     const { data } = await this.sb.from("shopping_items").update({ claimed_by: userId }).eq("id", id).is("claimed_by", null).select("claimed_by");

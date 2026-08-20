@@ -19,8 +19,8 @@ export default async function MorePage() {
   const openTasks = tasks.filter((t) => !t.completed).length;
 
   const items: { href: string; icon: string; label: string; badge?: number }[] = [
-    { href: "/plans", icon: "📅", label: "Plans", badge: plans.length },
-    { href: "/pickups", icon: "🚗", label: "Airport pickups", badge: openPickups },
+    { href: "/calendar?view=plans", icon: "📅", label: "Plans", badge: plans.length },
+    { href: "/flights", icon: "🚗", label: "Airport pickups", badge: openPickups },
     { href: "/shopping", icon: "🛒", label: "Shopping", badge: openShopping },
     { href: "/tasks", icon: "✅", label: "Tasks", badge: openTasks },
     { href: "/info", icon: "ℹ️", label: "Important info" },

@@ -32,3 +32,19 @@ export interface FlightProvider {
   /** Aircraft details by registration, if supported. */
   getAircraftDetails?(registration: string): Promise<AircraftDetails | null>;
 }
+
+/**
+ * Live positions are a separate concern from schedule/status. OpenSky (and
+ * similar radar sources) only know where a plane is right now, not its gate
+ * or delay. Keep it split so the status provider (AeroDataBox) and the
+ * position provider (OpenSky) can be chosen independently.
+ */
+export interface PositionProvider {
+  readonly name: string;
+
+  /** Live position for a flight number today, or null if not currently tracked. */
+  getFlightPosition(
+    flightNumber: string,
+    date: string
+  ): Promise<FlightPosition | null>;
+}

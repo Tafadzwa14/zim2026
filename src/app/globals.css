@@ -6,67 +6,85 @@
    ============================================================ */
 
 :root {
-  /* surfaces */
-  --paper: #fbf4ea;
+  /* surfaces — Slate Editorial (light) */
+  --paper: #f3f5f8;
   --card: #ffffff;
-  --chip: #efe8db;
-  --line: #efe6d5;
-  --line2: #f4ece0;
+  --chip: #e9edf2;
+  --line: #dbe1e9;
+  --line2: #e7ebf1;
   /* ink */
-  --ink: #241d16;
-  --ink2: #7c6f60;
-  --muted: #b08a5a;
-  /* brand accents */
-  --honey: #d9822b;
-  --honey2: #e8a24e;
-  --berry: #c74471;
-  /* flight hero (warm-dark) */
-  --flight: #1d1710;
-  --flight2: #26201a;
+  --ink: #1a2230;
+  --ink2: #5b6473;
+  --muted: #8892a1;
+  /* brand accents — cool teal primary, cooled berry */
+  --honey: #2f6f8f;
+  --honey2: #3a86a8;
+  --berry: #c14b6f;
+  /* flight hero (cool-dark) */
+  --flight: #16283a;
+  --flight2: #1e3247;
   /* semantic status (never flag references) */
-  --good: #12a150;
-  --warn: #d9822b;
-  --shadow: 0 10px 24px -18px rgba(120, 86, 40, 0.55);
+  --good: #188a5a;
+  --warn: #c07d2b;
+  --shadow: 0 10px 24px -18px rgba(30, 45, 70, 0.5);
+  /* theme-aware gradients + fx (referenced from inline styles) */
+  --grad-wed: linear-gradient(120deg, #3a2540, #7a2d54 55%, #c14b6f);
+  --grad-dinner: linear-gradient(150deg, #2f6f8f, #274b63);
+  --grad-onboard: linear-gradient(150deg, #2f6f8f, #7a2d54);
+  --flight-radial: radial-gradient(circle, rgba(94, 200, 232, 0.28), transparent 68%);
+  --flight-label: #9fb0c2;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --paper: #161310;
-    --card: #201b16;
-    --chip: #2c251e;
-    --line: #312a22;
-    --line2: #241f19;
-    --ink: #f3ede4;
-    --ink2: #a99b89;
-    --muted: #b89468;
-    --honey: #e8a24e;
-    --honey2: #f0b256;
-    --berry: #e0708f;
-    --flight: #0e1420;
-    --flight2: #141c2b;
-    --good: #3fd98a;
-    --warn: #e8a24e;
+    /* Midnight (dark) */
+    --paper: #0e131c;
+    --card: #18202e;
+    --chip: #222c3c;
+    --line: #2a3546;
+    --line2: #1c2532;
+    --ink: #e7ecf3;
+    --ink2: #8a94a5;
+    --muted: #7f93a8;
+    --honey: #5ec8e8;
+    --honey2: #7ad3ef;
+    --berry: #e07aa0;
+    --flight: #121b2b;
+    --flight2: #1a2740;
+    --good: #4fd99a;
+    --warn: #e0a95e;
     --shadow: 0 12px 26px -18px rgba(0, 0, 0, 0.6);
+    --grad-wed: linear-gradient(150deg, #e07aa0, #96467a);
+    --grad-dinner: linear-gradient(150deg, #2f6f8f, #22485f);
+    --grad-onboard: linear-gradient(150deg, #2f6f8f, #7a2d54);
+    --flight-radial: radial-gradient(circle, rgba(94, 200, 232, 0.3), transparent 68%);
+    --flight-label: #9fb0c2;
   }
 }
 
 :root[data-theme="dark"] {
-  --paper: #161310;
-  --card: #201b16;
-  --chip: #2c251e;
-  --line: #312a22;
-  --line2: #241f19;
-  --ink: #f3ede4;
-  --ink2: #a99b89;
-  --muted: #b89468;
-  --honey: #e8a24e;
-  --honey2: #f0b256;
-  --berry: #e0708f;
-  --flight: #0e1420;
-  --flight2: #141c2b;
-  --good: #3fd98a;
-  --warn: #e8a24e;
+  /* Midnight (dark) */
+  --paper: #0e131c;
+  --card: #18202e;
+  --chip: #222c3c;
+  --line: #2a3546;
+  --line2: #1c2532;
+  --ink: #e7ecf3;
+  --ink2: #8a94a5;
+  --muted: #7f93a8;
+  --honey: #5ec8e8;
+  --honey2: #7ad3ef;
+  --berry: #e07aa0;
+  --flight: #121b2b;
+  --flight2: #1a2740;
+  --good: #4fd99a;
+  --warn: #e0a95e;
   --shadow: 0 12px 26px -18px rgba(0, 0, 0, 0.6);
+  --grad-wed: linear-gradient(150deg, #e07aa0, #96467a);
+  --grad-dinner: linear-gradient(150deg, #2f6f8f, #22485f);
+  --grad-onboard: linear-gradient(150deg, #2f6f8f, #7a2d54);
+  --flight-radial: radial-gradient(circle, rgba(94, 200, 232, 0.3), transparent 68%);
+  --flight-label: #9fb0c2;
 }
 
 @theme inline {

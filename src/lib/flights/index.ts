@@ -3,10 +3,15 @@ import "server-only";
 import { serverEnv } from "@/lib/env";
 import { AeroDataBoxProvider } from "./aerodatabox";
 import { MockFlightProvider } from "./mock";
-import type { FlightProvider } from "./provider";
-import type { FlightSearchResult, FlightStatusResult } from "./types";
+import { OpenSkyPositionProvider } from "./opensky";
+import type { FlightProvider, PositionProvider } from "./provider";
+import type {
+  FlightPosition,
+  FlightSearchResult,
+  FlightStatusResult,
+} from "./types";
 
-export type { FlightProvider } from "./provider";
+export type { FlightProvider, PositionProvider } from "./provider";
 export type * from "./types";
 
 let singleton: FlightProvider | null = null;
@@ -21,6 +26,31 @@ export function getFlightProvider(): FlightProvider {
     singleton = new MockFlightProvider();
   }
   return singleton;
+}
+
+// `undefined` = not yet resolved; `null` = no position source configured.
+let positionSingleton: PositionProvider | null | undefined;
+
+/**
+ * Resolve the live-position provider. Separate from the status provider so
+ * OpenSky (free radar) can supply positions while AeroDataBox handles
+ * schedule and status. Falls back to the status provider's own
+ * getFlightPosition if one exists, else nothing.
+ */
+function getPositionProvider(): PositionProvider | null {
+  if (positionSingleton !== undefined) return positionSingleton;
+  const choice = serverEnv.positionProvider.toLowerCase();
+  if (choice === "opensky") {
+    positionSingleton = new OpenSkyPositionProvider();
+  } else if (choice === "none") {
+    positionSingleton = null;
+  } else {
+    const main = getFlightProvider();
+    positionSingleton = main.getFlightPosition
+      ? { name: main.name, getFlightPosition: main.getFlightPosition.bind(main) }
+      : null;
+  }
+  return positionSingleton;
 }
 
 // ---- tiny in-memory TTL cache to respect provider rate limits (section 25) ----
@@ -53,6 +83,25 @@ export async function getFlightStatus(
   const ttl = active ? 60_000 : 10 * 60_000;
   return cached(`status:${flightNumber}:${date}`, ttl, () =>
     getFlightProvider().getFlightStatus(flightNumber, date)
+  );
+}
+
+/**
+ * Live position for a flight, if a position provider is configured and the
+ * aircraft is currently visible to it. Degrades to null on any failure so a
+ * quiet radar (common over ocean/Africa) never breaks the caller. Poll active
+ * flights more often; scheduled/landed rarely (section 25).
+ */
+export async function getFlightPosition(
+  flightNumber: string,
+  date: string,
+  active = false
+): Promise<FlightPosition | null> {
+  const provider = getPositionProvider();
+  if (!provider) return null;
+  const ttl = active ? 60_000 : 5 * 60_000;
+  return cached(`pos:${flightNumber}:${date}`, ttl, () =>
+    provider.getFlightPosition(flightNumber, date).catch(() => null)
   );
 }
 

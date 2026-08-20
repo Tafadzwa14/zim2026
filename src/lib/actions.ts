@@ -16,7 +16,8 @@ import {
   setSession,
   verifyPin,
 } from "@/lib/identity";
-import { estimateProgress, getFlightStatus, searchFlight } from "@/lib/flights";
+import { estimateProgress, getFlightPosition, getFlightStatus, searchFlight } from "@/lib/flights";
+import { routeFraction } from "@/lib/flights/geo";
 import type { PlanCategory } from "@/lib/types";
 
 export type ActionResult<T = unknown> =
@@ -268,7 +269,25 @@ export async function refreshFlight(travelId: string): Promise<ActionResult> {
       }
       const dep = status.departure.actualTime ?? status.departure.estimatedTime ?? status.departure.scheduledTime ?? leg.scheduled_departure;
       const arr = status.arrival.estimatedTime ?? status.arrival.scheduledTime ?? leg.scheduled_arrival;
-      const prog = status.status === "landed" ? 1 : status.status === "air" ? estimateProgress(dep, arr) : 0;
+      let prog = status.status === "landed" ? 1 : status.status === "air" ? estimateProgress(dep, arr) : 0;
+      // Prefer a live OpenSky position for the plane when airborne; fall back
+      // to the time estimate when the radar can't see it (ocean/Africa gaps).
+      let progressSource: import("@/lib/types").FlightLeg["progress_source"] = null;
+      if (status.status === "air") {
+        progressSource = "estimated";
+        const pos = await getFlightPosition(leg.flight_number, date, true);
+        if (pos) {
+          const live = routeFraction(
+            status.departure.airport || leg.origin_airport,
+            status.arrival.airport || leg.destination_airport,
+            pos
+          );
+          if (live !== null) {
+            prog = live;
+            progressSource = "live";
+          }
+        }
+      }
       await repo.syncLeg(leg.id, {
         status: status.status,
         airline_name: status.airlineName ?? leg.airline_name,
@@ -282,6 +301,7 @@ export async function refreshFlight(travelId: string): Promise<ActionResult> {
         aircraft_registration: status.aircraftRegistration ?? leg.aircraft_registration,
         delay_minutes: status.delayMinutes ?? leg.delay_minutes,
         progress: prog,
+        progress_source: progressSource,
       });
       if (status.status === "air") anyAir = true;
       if (status.status !== "landed") landedAll = false;
@@ -325,15 +345,35 @@ export async function releasePickup(travelGroupId: string): Promise<ActionResult
 }
 
 // ============================ shopping ============================
-export async function addShopping(input: { item: string; quantity: number; category: string }): Promise<ActionResult> {
+export async function addShopping(input: { item: string; quantity: number; category: string; assignTo?: string | null }): Promise<ActionResult> {
   const me = await requireUser();
   const item = input.item?.trim();
   if (!item) return fail("Add an item");
+  const qty = Math.max(1, Math.floor(input.quantity || 1));
+  const assignTo = input.assignTo || null;
   const repo = getRepo();
-  await repo.addShopping({ item, quantity: Math.max(1, Math.floor(input.quantity || 1)), category: input.category, created_by: me.id });
-  await repo.addActivity(me.id, "shopping_added", `added ${item} ×${Math.max(1, input.quantity || 1)}`);
+  // Merge into an existing open item of the same name + category rather than
+  // creating a duplicate row.
+  const existing = (await repo.listShopping()).find(
+    (s) => !s.completed && s.category === input.category && s.item.trim().toLowerCase() === item.toLowerCase(),
+  );
+  if (existing) {
+    await repo.setShoppingQuantity(existing.id, existing.quantity + qty);
+    if (assignTo && !existing.claimed_by) await repo.assignShopping(existing.id, assignTo);
+    await repo.addActivity(me.id, "shopping_added", `added ${qty} more ${item}`);
+    refresh();
+    return ok({}, `Updated ${item} → ×${existing.quantity + qty}`);
+  }
+  await repo.addShopping({ item, quantity: qty, category: input.category, created_by: me.id, claimed_by: assignTo });
+  await repo.addActivity(me.id, "shopping_added", `added ${item} ×${qty}`);
   refresh();
   return ok({}, "Added to the list");
+}
+export async function assignShopping(id: string, userId: string | null): Promise<ActionResult> {
+  await requireUser();
+  await getRepo().assignShopping(id, userId);
+  refresh();
+  return ok();
 }
 export async function claimShopping(id: string): Promise<ActionResult> {
   const me = await requireUser();

@@ -28,6 +28,17 @@ export const serverEnv = {
   get aerodataboxHost(): string {
     return process.env.AERODATABOX_RAPIDAPI_HOST ?? "aerodatabox.p.rapidapi.com";
   },
+  /** Live-position source, independent of the status provider. "opensky" or "none". */
+  get positionProvider(): string {
+    return process.env.FLIGHT_POSITION_PROVIDER ?? "opensky";
+  },
+  /** OpenSky OAuth2 client credentials (optional; anonymous access otherwise). */
+  get openskyClientId(): string {
+    return process.env.OPENSKY_CLIENT_ID ?? "";
+  },
+  get openskyClientSecret(): string {
+    return process.env.OPENSKY_CLIENT_SECRET ?? "";
+  },
   /** Extra secret mixed into PIN hashes on top of the per-user salt. */
   get pinPepper(): string {
     return process.env.APP_PIN_PEPPER ?? "";

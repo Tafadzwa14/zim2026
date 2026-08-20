@@ -103,7 +103,7 @@ export function RosterRow({ u, meId, places }: { u: RosterUser; meId: string; pl
               {ROLES.map((r) => {
                 const on = u.roles.includes(r.slug);
                 return (
-                  <button key={r.slug} onClick={() => toggleRole(r.slug)} className={cn("rounded-full border-[1.5px] px-2.5 py-1 text-xs font-bold", on ? "border-honey bg-[#fbecd8] text-[#8a5115] dark:bg-[color-mix(in_srgb,var(--honey)_22%,transparent)] dark:text-ink" : "border-line bg-card text-ink2")}>
+                  <button key={r.slug} onClick={() => toggleRole(r.slug)} className={cn("rounded-full border-[1.5px] px-2.5 py-1 text-xs font-bold", on ? "border-honey bg-[color-mix(in_srgb,var(--honey)_15%,transparent)] text-honey" : "border-line bg-card text-ink2")}>
                     {r.emoji} {r.label}
                   </button>
                 );

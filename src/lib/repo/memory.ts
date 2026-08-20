@@ -228,6 +228,7 @@ class MemoryRepo implements Repo {
         terminal_departure: l.terminal_departure ?? null, gate_departure: null, terminal_arrival: null, gate_arrival: null,
         aircraft_type: l.aircraft_type ?? null, aircraft_type_code: l.aircraft_type_code ?? null,
         aircraft_registration: l.aircraft_registration ?? null, status: l.status ?? "scheduled", progress: 0,
+        progress_source: null,
         delay_minutes: 0, last_synced_at: nowIso(), created_at: nowIso(), updated_at: nowIso(),
       };
       this.d.legs.push(leg);
@@ -280,10 +281,18 @@ class MemoryRepo implements Repo {
   async addShopping(input: NewShoppingInput) {
     const s: ShoppingItem = {
       id: uid(), item: input.item, quantity: input.quantity, category: input.category, notes: input.notes ?? null,
-      created_by: input.created_by, claimed_by: null, completed: false, completed_at: null, created_at: nowIso(), updated_at: nowIso(),
+      created_by: input.created_by, claimed_by: input.claimed_by ?? null, completed: false, completed_at: null, created_at: nowIso(), updated_at: nowIso(),
     };
     this.d.shopping.push(s);
     return this.shoppingView(s);
+  }
+  async setShoppingQuantity(id: string, quantity: number) {
+    const s = this.d.shopping.find((x) => x.id === id);
+    if (s) { s.quantity = Math.max(1, Math.floor(quantity)); s.updated_at = nowIso(); }
+  }
+  async assignShopping(id: string, userId: string | null) {
+    const s = this.d.shopping.find((x) => x.id === id);
+    if (s) { s.claimed_by = userId; s.updated_at = nowIso(); }
   }
   async claimShopping(id: string, userId: string): Promise<ClaimResult> {
     const s = this.d.shopping.find((x) => x.id === id);

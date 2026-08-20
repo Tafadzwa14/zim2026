@@ -1,12 +1,13 @@
 import Link from "next/link";
 import { getRepo } from "@/lib/repo";
+import { getCurrentUser } from "@/lib/identity";
 import { tripDateOf, tripTodayISO, fmtDayShortUpper, fmtTime } from "@/lib/format";
 import { flightStatusMeta } from "@/lib/display";
 import { FlightCard } from "@/components/flight-card";
-import { EmptyState, LiveDot, List, Screen, SectionHeader } from "@/components/ui";
+import { CatPill, EmptyState, LiveDot, List, Screen, SectionHeader } from "@/components/ui";
+import { PickupControl } from "@/components/interactive";
 import type { TravelView } from "@/lib/repo/types";
-
-export const dynamic = "force-dynamic";
+import type { PublicUser } from "@/lib/types";
 
 function Row({ t }: { t: TravelView }) {
   const leg = t.activeLeg;
@@ -28,17 +29,43 @@ function Row({ t }: { t: TravelView }) {
   );
 }
 
+function PickupCard({ t, me, users }: { t: TravelView; me: PublicUser; users: PublicUser[] }) {
+  const leg = t.activeLeg;
+  const driver = t.pickup?.driver_user_id ? users.find((u) => u.id === t.pickup?.driver_user_id) ?? null : null;
+  return (
+    <div className="zc-card p-4">
+      <div className="flex items-baseline justify-between">
+        <div className="mono font-semibold">{fmtDayShortUpper(t.arrivalIso)} · {fmtTime(t.arrivalIso)}</div>
+        {leg && <CatPill icon="✈️" label={leg.flight_number} />}
+      </div>
+      <div className="disp my-2 text-lg font-extrabold">{t.members.map((m) => m.emoji).join(" ")} {t.title}</div>
+      {leg && <div className="mono text-[11px] text-muted">{leg.origin_city} → {leg.destination_city}</div>}
+      <div className="mt-3"><PickupControl travelId={t.id} driver={driver} meId={me.id} isAdmin={me.is_admin} big={!driver} /></div>
+    </div>
+  );
+}
+
 export default async function FlightsPage() {
-  const travel = await getRepo().listTravel();
+  const [travel, me, users] = await Promise.all([getRepo().listTravel(), getCurrentUser(), getRepo().listUsers()]);
+  if (!me) return null;
   const today = tripTodayISO();
   const air = travel.filter((t) => t.legs.some((l) => l.status === "air"));
   const todayFlights = travel.filter((t) => !air.includes(t) && t.arrivalIso && tripDateOf(t.arrivalIso) === today);
   const upcoming = travel.filter((t) => t.status === "upcoming" && !todayFlights.includes(t));
   const landed = travel.filter((t) => t.status === "arrived");
+  const runs = travel.filter((t) => t.pickup?.requested && t.status !== "arrived");
 
   return (
-    <Screen title="Flights ✈️" sub="Family flight board">
-      {travel.length === 0 && <EmptyState emoji="✈️" title="No flights yet" hint="Add travel to start tracking arrivals." />}
+    <Screen title="Flights ✈️" sub="Flight board and airport runs">
+      {travel.length === 0 && <EmptyState emoji="✈️" title="No flights yet" hint="Add travel to start tracking arrivals and pickups." />}
+
+      {runs.length > 0 && (
+        <>
+          <SectionHeader meta={String(runs.length)}>Airport runs 🚗</SectionHeader>
+          <div className="grid gap-3 md:grid-cols-2">{runs.map((t) => <PickupCard key={t.id} t={t} me={me} users={users} />)}</div>
+        </>
+      )}
+
       {air.length > 0 && (
         <>
           <SectionHeader meta={<><LiveDot /> live</>}>In the air</SectionHeader>

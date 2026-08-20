@@ -27,7 +27,7 @@ function Toggle({ on, onToggle, label }: { on: boolean; onToggle: () => void; la
         aria-checked={on}
         aria-label={label}
         onClick={onToggle}
-        className={cn("relative h-7 w-[46px] flex-none rounded-full transition-colors", on ? "bg-good" : "bg-[#e0d5c2]")}
+        className={cn("relative h-7 w-[46px] flex-none rounded-full transition-colors", on ? "bg-good" : "bg-[#cdd5df] dark:bg-[#33404f]")}
       >
         <span className={cn("absolute top-[3px] h-[22px] w-[22px] rounded-full bg-white transition-all", on ? "left-[21px]" : "left-[3px]")} />
       </button>
@@ -50,7 +50,7 @@ function PeoplePicker({ users, value, onChange, lock }: { users: PublicUser[]; v
             }}
             className={cn(
               "flex items-center gap-1.5 rounded-full border-[1.5px] px-3 py-1.5 text-[13px] font-extrabold",
-              on ? "border-honey bg-[#fbecd8] text-[#8a5115] dark:bg-[color-mix(in_srgb,var(--honey)_22%,transparent)] dark:text-ink" : "border-line bg-card"
+              on ? "border-honey bg-[color-mix(in_srgb,var(--honey)_15%,transparent)] text-honey" : "border-line bg-card"
             )}
           >
             <span className="text-base" aria-hidden>{u.emoji}</span>
@@ -94,7 +94,7 @@ export function PlanForm({ me, users, places = [], onDone }: FormProps) {
       <label className="zc-label">Category</label>
       <div className="flex flex-wrap gap-2">
         {CATEGORIES.map((c) => (
-          <button key={c.id} type="button" onClick={() => setCategory(c.id)} className={cn("flex items-center gap-1.5 rounded-xl border-[1.5px] px-3 py-2 text-[13px] font-extrabold", category === c.id ? "border-honey bg-[#fbecd8] text-[#8a5115] dark:bg-[color-mix(in_srgb,var(--honey)_22%,transparent)] dark:text-ink" : "border-line bg-card")}>
+          <button key={c.id} type="button" onClick={() => setCategory(c.id)} className={cn("flex items-center gap-1.5 rounded-xl border-[1.5px] px-3 py-2 text-[13px] font-extrabold", category === c.id ? "border-honey bg-[color-mix(in_srgb,var(--honey)_15%,transparent)] text-honey" : "border-line bg-card")}>
             <span aria-hidden>{c.icon}</span> {c.label}
           </button>
         ))}
@@ -120,7 +120,7 @@ const localInputToIso = (v: string): string | null => (v ? new Date(v).toISOStri
 
 function LegCard({ leg, index, onChange, onRemove }: { leg: NewLegInput; index: number; onChange: (patch: Partial<NewLegInput>) => void; onRemove: () => void }) {
   return (
-    <div className="zc-card mt-2 border-[#eecfa3] bg-[#fbecd8] p-3.5 dark:bg-[color-mix(in_srgb,var(--honey)_16%,transparent)]">
+    <div className="zc-card mt-2 border-[color-mix(in_srgb,var(--honey)_35%,transparent)] bg-[color-mix(in_srgb,var(--honey)_16%,transparent)] p-3.5">
       <div className="mb-2 flex items-center justify-between">
         <span className="mono text-[11px] font-extrabold text-ink2">Leg {index + 1}</span>
         <button type="button" onClick={onRemove} className="text-xs font-extrabold text-berry">Remove</button>
@@ -226,13 +226,31 @@ export function TravelForm({ me, users, onDone }: FormProps) {
   );
 }
 
-export function ShoppingForm({ onDone }: { onDone: () => void }) {
+export function ShoppingForm({ me, users, onDone }: { me: PublicUser; users: PublicUser[]; onDone: () => void }) {
   const { run, pending } = useAction();
-  const [form, setForm] = useState({ item: "", quantity: 1, category: "Groceries" });
+  const [form, setForm] = useState<{ item: string; quantity: number; category: string; assignTo: string | null }>({
+    item: "", quantity: 1, category: "Groceries", assignTo: null,
+  });
+  const [added, setAdded] = useState(0);
+  const itemRef = useRef<HTMLInputElement>(null);
+  // Quick-add: after each item we clear the name and refocus, keeping the
+  // category and the "for" tag, so a whole list can be entered in one go.
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.item.trim()) return;
+    run(() => actions.addShopping(form), {
+      silent: true,
+      onSuccess: () => {
+        setForm((f) => ({ ...f, item: "", quantity: 1 }));
+        setAdded((n) => n + 1);
+        itemRef.current?.focus();
+      },
+    });
+  };
   return (
-    <form onSubmit={(e) => { e.preventDefault(); run(() => actions.addShopping(form), { onSuccess: onDone }); }}>
+    <form onSubmit={submit}>
       <label className="zc-label">Item</label>
-      <input className="zc-input" autoFocus placeholder="e.g. Coke" value={form.item} onChange={(e) => setForm({ ...form, item: e.target.value })} />
+      <input ref={itemRef} className="zc-input" autoFocus placeholder="e.g. Coke" value={form.item} onChange={(e) => setForm({ ...form, item: e.target.value })} />
       <div className="grid grid-cols-2 gap-2.5">
         <div>
           <label className="zc-label">Quantity</label>
@@ -245,7 +263,29 @@ export function ShoppingForm({ onDone }: { onDone: () => void }) {
           </select>
         </div>
       </div>
-      <button className="zc-btn mt-5 w-full" disabled={pending}>Add to list</button>
+      <label className="zc-label">For (optional)</label>
+      <div className="flex flex-wrap gap-2">
+        {[{ id: null as string | null, emoji: "🤷", name: "Anyone" }, ...users].map((u) => {
+          const on = form.assignTo === u.id;
+          const label = u.id === me.id ? "Me" : u.name;
+          return (
+            <button
+              key={u.id ?? "none"}
+              type="button"
+              onClick={() => setForm({ ...form, assignTo: u.id })}
+              className={cn("flex items-center gap-1.5 rounded-full border-[1.5px] px-3 py-1.5 text-[13px] font-extrabold", on ? "border-honey bg-[color-mix(in_srgb,var(--honey)_15%,transparent)] text-honey" : "border-line bg-card")}
+            >
+              <span className="text-base" aria-hidden>{u.emoji}</span>
+              {label}
+            </button>
+          );
+        })}
+      </div>
+      <button className="zc-btn mt-5 w-full" disabled={pending || !form.item.trim()}>Add to list</button>
+      <div className="mt-2.5 flex items-center justify-between text-xs font-semibold text-muted">
+        <span>{added > 0 ? `${added} added — keep going or close` : "Press enter to add and keep the sheet open"}</span>
+        {added > 0 && <button type="button" className="zc-btn zc-btn-ghost px-3 py-1" onClick={onDone}>Done</button>}
+      </div>
     </form>
   );
 }

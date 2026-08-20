@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
+import { EmptyState, List } from "@/components/ui";
 import { useAction } from "@/lib/use-action";
 import * as actions from "@/lib/actions";
 import { fmtDayShort } from "@/lib/format";
@@ -40,34 +42,177 @@ function Btn({
   );
 }
 
-export function ShoppingItemRow({ item, meId }: { item: ShoppingView; meId: string }) {
-  const { run } = useAction();
+export function ShoppingItemRow({ item, meId, users = [] }: { item: ShoppingView; meId: string; users?: PublicUser[] }) {
+  const { run, pending } = useAction();
   const mine = item.claimed_by === meId;
+  // Optimistic tick: reflect the toggle instantly, then reconcile to the
+  // server value once the action settles.
+  const [optimistic, setOptimistic] = useState<boolean | null>(null);
+  const [picking, setPicking] = useState(false);
+  const completed = optimistic ?? item.completed;
+  useEffect(() => {
+    if (!pending) setOptimistic(null);
+  }, [pending, item.completed]);
+  const toggle = () => {
+    const next = !completed;
+    setOptimistic(next);
+    run(() => actions.toggleShopping(item.id, next));
+  };
+  const assign = (userId: string | null) => {
+    setPicking(false);
+    run(() => actions.assignShopping(item.id, userId));
+  };
   return (
-    <div className={cn("flex items-center gap-3 border-b border-line2 px-4 py-3.5 last:border-0", item.completed && "opacity-70")}>
-      <button
-        aria-label={item.completed ? "Mark not done" : "Mark done"}
-        onClick={() => run(() => actions.toggleShopping(item.id, !item.completed))}
-        className={cn("grid h-6 w-6 flex-none place-items-center rounded-lg border-2 text-sm text-white", item.completed ? "border-good bg-good" : "border-[#d9cdb8] bg-card")}
-      >
-        {item.completed ? "✓" : ""}
-      </button>
-      <div className="min-w-0 flex-1">
-        <div className={cn("text-[15px] font-extrabold", item.completed && "line-through text-muted")}>{item.item}</div>
-        {item.claimer && !item.completed && <div className="text-xs font-semibold text-muted">Getting this: {item.claimer.emoji} {item.claimer.name}</div>}
-        {item.completed && item.claimer && <div className="text-xs font-semibold text-muted">Done · {item.claimer.emoji} {item.claimer.name}</div>}
-      </div>
-      <span className="mono rounded-md bg-chip px-2 py-0.5 text-xs font-semibold text-ink2">×{item.quantity}</span>
-      {!item.completed &&
-        (item.claimer ? (
-          mine ? (
-            <Btn onClick={() => run(() => actions.unclaimShopping(item.id))}>Unclaim</Btn>
+    <div className={cn("border-b border-line2 last:border-0", completed && "opacity-70")}>
+      <div className="flex items-center gap-3 px-4 py-3.5">
+        <button
+          aria-label={completed ? "Mark not done" : "Mark done"}
+          onClick={toggle}
+          className={cn("grid h-6 w-6 flex-none place-items-center rounded-lg border-2 text-sm text-white", completed ? "border-good bg-good" : "border-[#d9cdb8] bg-card")}
+        >
+          {completed ? "✓" : ""}
+        </button>
+        <div className="min-w-0 flex-1">
+          <div className={cn("text-[15px] font-extrabold", completed && "line-through text-muted")}>{item.item}</div>
+          {item.claimer && !completed && <div className="text-xs font-semibold text-muted">Getting this: {item.claimer.emoji} {item.claimer.name}</div>}
+          {completed && item.claimer && <div className="text-xs font-semibold text-muted">Done · {item.claimer.emoji} {item.claimer.name}</div>}
+        </div>
+        <span className="mono rounded-md bg-chip px-2 py-0.5 text-xs font-semibold text-ink2">×{item.quantity}</span>
+        {!completed &&
+          (item.claimer ? (
+            mine ? (
+              <Btn onClick={() => run(() => actions.unclaimShopping(item.id))}>Unclaim</Btn>
+            ) : (
+              <span className="text-lg" aria-label={`Claimed by ${item.claimer.name}`}>{item.claimer.emoji}</span>
+            )
           ) : (
-            <span className="text-lg" aria-label={`Claimed by ${item.claimer.name}`}>{item.claimer.emoji}</span>
-          )
-        ) : (
-          <Btn onClick={() => run(() => actions.claimShopping(item.id))}>I&apos;ll get it</Btn>
+            <Btn onClick={() => run(() => actions.claimShopping(item.id))}>I&apos;ll get it</Btn>
+          ))}
+        {!completed && users.length > 0 && (
+          <button
+            aria-label="Tag someone"
+            aria-expanded={picking}
+            onClick={() => setPicking((p) => !p)}
+            className={cn("grid h-8 w-8 flex-none place-items-center rounded-lg border text-sm", picking ? "border-honey text-honey" : "border-line text-muted")}
+          >
+            👤
+          </button>
+        )}
+      </div>
+      {picking && !completed && (
+        <div className="flex flex-wrap gap-2 px-4 pb-3.5">
+          {[{ id: null as string | null, emoji: "🤷", name: "Anyone" }, ...users].map((u) => {
+            const on = item.claimed_by === u.id;
+            const label = u.id === meId ? "Me" : u.name;
+            return (
+              <button
+                key={u.id ?? "none"}
+                onClick={() => assign(u.id)}
+                className={cn("flex items-center gap-1.5 rounded-full border-[1.5px] px-3 py-1.5 text-[13px] font-extrabold", on ? "border-honey bg-[color-mix(in_srgb,var(--honey)_15%,transparent)] text-honey" : "border-line bg-card")}
+              >
+                <span className="text-base" aria-hidden>{u.emoji}</span>
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const SHOP_CATS = ["Groceries", "Wedding", "House", "Other"];
+// Open items float up (unclaimed before claimed); done items sink.
+function shopRank(s: ShoppingView) {
+  if (s.completed) return 2;
+  return s.claimed_by ? 1 : 0;
+}
+type ShopSeg = "all" | "mine" | "todo";
+
+export function ShoppingList({ items, meId, users }: { items: ShoppingView[]; meId: string; users: PublicUser[] }) {
+  const [seg, setSeg] = useState<ShopSeg>("all");
+
+  const counts = useMemo(() => {
+    let all = 0, mine = 0, todo = 0;
+    for (const s of items) {
+      if (s.completed) continue;
+      all++;
+      if (s.claimed_by === meId) mine++;
+      if (!s.claimed_by) todo++;
+    }
+    return { all, mine, todo };
+  }, [items, meId]);
+
+  const visible = useMemo(
+    () =>
+      items.filter((s) => {
+        if (seg === "mine") return s.claimed_by === meId;
+        if (seg === "todo") return !s.claimed_by && !s.completed;
+        return true;
+      }),
+    [items, seg, meId],
+  );
+
+  // Single-pass grouping: keep known categories in order, append any others.
+  const groups = useMemo(() => {
+    const m = new Map<string, ShoppingView[]>();
+    for (const cat of SHOP_CATS) m.set(cat, []);
+    for (const it of visible) {
+      const g = m.get(it.category);
+      if (g) g.push(it);
+      else m.set(it.category, [it]);
+    }
+    return [...m].filter(([, g]) => g.length);
+  }, [visible]);
+
+  const segs: { key: ShopSeg; label: string; n: number }[] = [
+    { key: "all", label: "All", n: counts.all },
+    { key: "mine", label: "Mine", n: counts.mine },
+    { key: "todo", label: "To do", n: counts.todo },
+  ];
+
+  return (
+    <div>
+      <div role="tablist" aria-label="Filter shopping list" className="mb-4 flex gap-1 rounded-xl border border-line bg-card p-1">
+        {segs.map((s) => (
+          <button
+            key={s.key}
+            role="tab"
+            aria-selected={seg === s.key}
+            onClick={() => setSeg(s.key)}
+            className={cn(
+              "flex-1 rounded-lg px-3 py-1.5 text-[13px] font-extrabold transition-colors",
+              seg === s.key ? "bg-honey text-white" : "text-muted",
+            )}
+          >
+            {s.label}
+            <span className={cn("mono ml-1.5 text-[11px]", seg === s.key ? "text-white/80" : "text-muted")}>{s.n}</span>
+          </button>
         ))}
+      </div>
+      {groups.length === 0 ? (
+        <EmptyState
+          emoji={seg === "mine" ? "🙌" : "🎉"}
+          title={seg === "mine" ? "Nothing on you" : "Nothing to grab"}
+          hint={seg === "all" ? "The list is empty." : "Switch to All to see everything."}
+        />
+      ) : (
+        <div className="flex flex-col gap-4">
+          {groups.map(([cat, group]) => {
+            const left = group.filter((s) => !s.completed).length;
+            const sorted = [...group].sort((a, b) => shopRank(a) - shopRank(b));
+            return (
+              <div key={cat}>
+                <div className="mb-2 flex items-baseline justify-between">
+                  <span className="disp text-[15px] font-extrabold">{cat}</span>
+                  <span className="mono text-[11px] uppercase tracking-wide text-muted">{left ? `${left} left` : "all done"}</span>
+                </div>
+                <List>{sorted.map((it) => <ShoppingItemRow key={it.id} item={it} meId={meId} users={users} />)}</List>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -165,7 +310,7 @@ export function PlanPeopleEditor({ planId, attendeeIds, users }: { planId: strin
           <button
             key={u.id}
             onClick={() => run(() => (on ? actions.removeAttendee(planId, u.id) : actions.addAttendee(planId, u.id)))}
-            className={cn("flex items-center gap-1.5 rounded-full border-[1.5px] px-3 py-1.5 text-[13px] font-extrabold", on ? "border-honey bg-[#fbecd8] text-[#8a5115] dark:bg-[color-mix(in_srgb,var(--honey)_22%,transparent)] dark:text-ink" : "border-line bg-card")}
+            className={cn("flex items-center gap-1.5 rounded-full border-[1.5px] px-3 py-1.5 text-[13px] font-extrabold", on ? "border-honey bg-[color-mix(in_srgb,var(--honey)_15%,transparent)] text-honey" : "border-line bg-card")}
           >
             <span className="text-base" aria-hidden>{u.emoji}</span>
             {u.name}
@@ -215,7 +360,7 @@ export function SwitchUserButton({ userId, current, emoji, name }: { userId: str
   return (
     <button
       onClick={() => !current && run<ActionResult>(() => actions.switchUser(userId))}
-      className={cn("zc-chip", current && "border-honey bg-[#fbecd8] dark:bg-[color-mix(in_srgb,var(--honey)_20%,transparent)]")}
+      className={cn("zc-chip", current && "border-honey bg-[color-mix(in_srgb,var(--honey)_16%,transparent)]")}
     >
       <span className="text-lg" aria-hidden>{emoji}</span>
       {name}

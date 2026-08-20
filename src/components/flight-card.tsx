@@ -19,7 +19,7 @@ function planeGlyph(p: number) {
 
 export function RouteMap({
   progress,
-  completed = "#e8a24e",
+  completed = "var(--honey)",
   plane = "#ffffff",
 }: {
   progress: number;
@@ -44,6 +44,24 @@ export function RouteMap({
   );
 }
 
+// Tells the family whether the plane on the map is a real radar fix (OpenSky)
+// or a schedule-based estimate when the radar can't see the aircraft.
+function SourceTag({ source }: { source: FlightLeg["progress_source"] }) {
+  const live = source === "live";
+  return (
+    <span
+      title={live ? "Live position from radar" : "Estimated from the schedule"}
+      className={cn(
+        "mono inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide",
+        live ? "bg-[#3fd98a]/20 text-[#3fd98a]" : "bg-white/10 text-[var(--flight-label)]"
+      )}
+    >
+      {live && <span className="zc-pulse h-1 w-1 rounded-full bg-current" />}
+      {live ? "Live" : "Est"}
+    </span>
+  );
+}
+
 function StatusBadge({ status }: { status: FlightLeg["status"] }) {
   const meta = flightStatusMeta(status);
   const tone =
@@ -53,7 +71,7 @@ function StatusBadge({ status }: { status: FlightLeg["status"] }) {
         ? "bg-[#a9c7e0] text-[#20303f]"
         : meta.tone === "cancel"
           ? "bg-[#e0708f] text-[#3a0f1c]"
-          : "bg-[#f0d9b6] text-[#5a4632]";
+          : "bg-[#c9d6e2] text-[#22303f]";
   return (
     <span className={cn("inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-[11px] font-extrabold uppercase tracking-wide", tone)}>
       {status === "air" && <span className="zc-pulse h-1.5 w-1.5 rounded-full bg-current" />}
@@ -72,23 +90,30 @@ export function FlightCard({ travel, full = false }: { travel: TravelView; full?
 
   const inner = (
     <div className="relative overflow-hidden rounded-[24px] bg-flight p-[19px] text-white shadow-[0_18px_34px_-20px_rgba(29,23,16,.7)]">
-      <span className="pointer-events-none absolute -right-8 -top-11 h-48 w-48 rounded-full" style={{ background: "radial-gradient(circle,rgba(232,162,78,.32),transparent 68%)" }} />
+      <span className="pointer-events-none absolute -right-8 -top-11 h-48 w-48 rounded-full" style={{ background: "var(--flight-radial)" }} />
       <div className="relative flex items-center justify-between">
         <div>
           <span className="mono text-[18px] font-semibold">{leg.flight_number}</span>
-          <span className="ml-1.5 text-[11px] font-bold uppercase tracking-wide text-[#c3b4a0]">{leg.airline_name}</span>
+          <span className="ml-1.5 text-[11px] font-bold uppercase tracking-wide text-[var(--flight-label)]">{leg.airline_name}</span>
         </div>
         <StatusBadge status={leg.status} />
       </div>
       <div className="relative mt-3.5 flex items-end justify-between">
         <div>
           <div className="mono text-[30px] font-semibold leading-none">{leg.origin_airport}</div>
-          <div className="mt-0.5 text-[11px] font-bold text-[#c3b4a0]">{leg.origin_city}</div>
+          <div className="mt-0.5 text-[11px] font-bold text-[var(--flight-label)]">{leg.origin_city}</div>
         </div>
-        <div className="mono pb-1 text-xs font-semibold text-honey2">{leg.status === "air" ? `${Math.round(progress * 100)}%` : ""}</div>
+        <div className="flex flex-col items-center gap-1 pb-1">
+          {leg.status === "air" && (
+            <>
+              <span className="mono text-xs font-semibold text-honey2">{Math.round(progress * 100)}%</span>
+              <SourceTag source={leg.progress_source} />
+            </>
+          )}
+        </div>
         <div className="text-right">
           <div className="mono text-[30px] font-semibold leading-none">{leg.destination_airport}</div>
-          <div className="mt-0.5 text-[11px] font-bold text-[#c3b4a0]">{leg.destination_city}</div>
+          <div className="mt-0.5 text-[11px] font-bold text-[var(--flight-label)]">{leg.destination_city}</div>
         </div>
       </div>
       <RouteMap progress={progress} />
@@ -101,19 +126,19 @@ export function FlightCard({ travel, full = false }: { travel: TravelView; full?
         ].map((m, i) => (
           <div key={i} className="flex-1 rounded-[14px] border border-white/5 bg-white/[.07] px-1.5 py-2.5 text-center">
             <div className={cn("mono text-[14px] font-semibold", m.late && "text-[#f0b84e]")}>{m.v}</div>
-            <div className="mt-1 text-[9px] font-bold uppercase tracking-wide text-[#c3b4a0]">{m.k}</div>
+            <div className="mt-1 text-[9px] font-bold uppercase tracking-wide text-[var(--flight-label)]">{m.k}</div>
           </div>
         ))}
       </div>
       {full && (
         <>
           <div className="relative mt-3 flex items-center gap-2.5 border-t border-white/10 pt-3">
-            <span className="mono w-[70px] flex-none text-[10px] uppercase tracking-wide text-[#c3b4a0]">On board</span>
+            <span className="mono w-[70px] flex-none text-[10px] uppercase tracking-wide text-[var(--flight-label)]">On board</span>
             <span className="text-[13.5px] font-extrabold">{travel.members.map((m) => `${m.emoji} ${m.name}`).join(", ") || travel.title}</span>
           </div>
           {travel.pickup?.requested && (
             <div className="relative mt-2.5 flex items-center gap-2.5">
-              <span className="mono w-[70px] flex-none text-[10px] uppercase tracking-wide text-[#c3b4a0]">Pickup</span>
+              <span className="mono w-[70px] flex-none text-[10px] uppercase tracking-wide text-[var(--flight-label)]">Pickup</span>
               {driver ? (
                 <>
                   <span className="text-[13.5px] font-extrabold">{driver.emoji} {driver.name}</span>

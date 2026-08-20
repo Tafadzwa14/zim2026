@@ -57,7 +57,7 @@ export function OnboardingClient({ isMemory, pending, claimed }: { isMemory: boo
 
   return (
     <div className="min-h-dvh bg-paper">
-      <div className="p-[44px_26px_20px] text-white" style={{ background: "linear-gradient(150deg,#e0863a,#c74471)" }}>
+      <div className="p-[44px_26px_20px] text-white" style={{ background: "var(--grad-onboard)" }}>
         <div className="mono text-xs font-medium uppercase tracking-[0.1em] opacity-90">Welcome to</div>
         <h1 className="disp mt-2.5 text-[34px] font-extrabold leading-none">Zim 2026</h1>
         <p className="mt-1.5 font-bold opacity-95">Let&apos;s get you set up.</p>
@@ -100,7 +100,7 @@ export function OnboardingClient({ isMemory, pending, claimed }: { isMemory: boo
               <input className="zc-input" placeholder="Search emoji (lion, flower, car…)" value={search} onChange={(e) => setSearch(e.target.value)} />
               <div className="mt-2 grid max-h-44 grid-cols-7 gap-1 overflow-y-auto">
                 {grid.map(([e]) => (
-                  <button type="button" key={e} onClick={() => setEmoji(e)} className={cn("rounded-lg py-1.5 text-2xl", e === emoji && "bg-[#fbecd8] dark:bg-[color-mix(in_srgb,var(--honey)_22%,transparent)]")}>{e}</button>
+                  <button type="button" key={e} onClick={() => setEmoji(e)} className={cn("rounded-lg py-1.5 text-2xl", e === emoji && "bg-[color-mix(in_srgb,var(--honey)_16%,transparent)]")}>{e}</button>
                 ))}
               </div>
 

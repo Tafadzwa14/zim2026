@@ -101,6 +101,7 @@ export interface NewShoppingInput {
   category: string;
   notes?: string | null;
   created_by: string;
+  claimed_by?: string | null;
 }
 export interface NewTaskInput {
   title: string;
@@ -187,6 +188,8 @@ export interface Repo {
   // shopping
   listShopping(): Promise<ShoppingView[]>;
   addShopping(input: NewShoppingInput): Promise<ShoppingView>;
+  setShoppingQuantity(id: string, quantity: number): Promise<void>;
+  assignShopping(id: string, userId: string | null): Promise<void>;
   claimShopping(id: string, userId: string): Promise<ClaimResult>;
   unclaimShopping(id: string): Promise<void>;
   setShoppingDone(id: string, done: boolean, userId: string): Promise<void>;

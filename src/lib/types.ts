@@ -108,7 +108,9 @@ export interface FlightLeg {
   aircraft_type_code: string | null;
   aircraft_registration: string | null;
   status: FlightStatus;
-  progress: number | null; // 0..1, estimated
+  progress: number | null; // 0..1
+  /** Where `progress` came from: live radar (OpenSky) vs a time estimate. */
+  progress_source: "live" | "estimated" | null;
   delay_minutes: number | null;
   last_synced_at: string | null;
   created_at: string;

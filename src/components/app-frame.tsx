@@ -47,11 +47,9 @@ export function AppFrame({
 
   const sideNav = [
     { href: "/", icon: "🏠", label: "Command centre" },
-    { href: "/calendar", icon: "📅", label: "Calendar" },
-    { href: "/flights", icon: "✈️", label: "Flights" },
+    { href: "/calendar", icon: "📅", label: "Calendar & plans" },
+    { href: "/flights", icon: "✈️", label: "Flights", badge: counts.pickups },
     ...(user.is_admin ? [{ href: "/family", icon: "👥", label: "Family" }] : []),
-    { href: "/plans", icon: "📋", label: "Plans" },
-    { href: "/pickups", icon: "🚗", label: "Pickups", badge: counts.pickups },
     { href: "/shopping", icon: "🛒", label: "Shopping", badge: counts.shopping },
     { href: "/tasks", icon: "✅", label: "Tasks", badge: counts.tasks },
     { href: "/info", icon: "ℹ️", label: "Important info" },
@@ -78,7 +76,7 @@ export function AppFrame({
               href={n.href}
               className={cn(
                 "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-extrabold",
-                active(n.href) ? "bg-[#fbecd8] text-[#8a5115] dark:bg-[color-mix(in_srgb,var(--honey)_20%,transparent)] dark:text-ink" : "text-ink2 hover:bg-chip"
+                active(n.href) ? "bg-[color-mix(in_srgb,var(--honey)_15%,transparent)] text-honey" : "text-ink2 hover:bg-chip"
               )}
             >
               <span className="w-[22px] text-center text-lg" aria-hidden>{n.icon}</span>
@@ -109,7 +107,7 @@ export function AppFrame({
       <button
         onClick={() => setSheet("menu")}
         aria-label="Add"
-        className="fixed bottom-[78px] right-4 z-[35] flex h-14 w-14 items-center justify-center rounded-[19px] bg-honey text-3xl text-white shadow-[0_12px_24px_-8px_rgba(217,130,43,.8)] active:scale-90 lg:hidden"
+        className="fixed bottom-[78px] right-4 z-[35] flex h-14 w-14 items-center justify-center rounded-[19px] bg-honey text-3xl text-white shadow-[0_12px_24px_-8px_rgba(47,111,143,.8)] active:scale-90 lg:hidden"
       >
         +
       </button>
@@ -117,7 +115,7 @@ export function AppFrame({
       {/* mobile bottom nav */}
       <nav className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-around border-t border-line bg-card px-1 pb-[max(10px,env(safe-area-inset-bottom))] pt-2 lg:hidden">
         {bottomNav.map((n) => (
-          <Link key={n.href} href={n.href} className={cn("flex flex-1 flex-col items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-extrabold", active(n.href) ? "text-honey" : "text-[#bcae9c]")}>
+          <Link key={n.href} href={n.href} className={cn("flex flex-1 flex-col items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-extrabold", active(n.href) ? "text-honey" : "text-[#9aa6b5]")}>
             <span className="text-xl leading-none" aria-hidden>{n.icon}</span>
             {n.label}
           </Link>
@@ -144,7 +142,7 @@ export function AppFrame({
       </Sheet>
       <Sheet open={sheet === "plan"} onClose={close} title="New plan"><PlanForm me={user} users={users} places={places} onDone={close} /></Sheet>
       <Sheet open={sheet === "travel"} onClose={close} title="Add travel"><TravelForm me={user} users={users} onDone={close} /></Sheet>
-      <Sheet open={sheet === "shopping"} onClose={close} title="Add shopping item"><ShoppingForm onDone={close} /></Sheet>
+      <Sheet open={sheet === "shopping"} onClose={close} title="Add shopping item"><ShoppingForm me={user} users={users} onDone={close} /></Sheet>
       <Sheet open={sheet === "task"} onClose={close} title="Add task"><TaskForm onDone={close} /></Sheet>
       {user.is_admin && <Sheet open={sheet === "ann"} onClose={close} title="New announcement"><AnnouncementForm onDone={close} /></Sheet>}
     </div>

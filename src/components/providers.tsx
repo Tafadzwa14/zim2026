@@ -7,10 +7,12 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 
 // ---------------- theme ----------------
 type Theme = "light" | "dark" | "system";
+const THEME_KEY = "zim-theme";
 const ThemeCtx = createContext<{ theme: Theme; setTheme: (t: Theme) => void }>({
   theme: "system",
   setTheme: () => {},
@@ -22,17 +24,31 @@ function applyTheme(t: Theme) {
   else root.setAttribute("data-theme", t);
 }
 
+// Theme lives in localStorage; read it through an external store so hydration
+// is SSR-safe (server renders "system") without a setState-in-effect.
+const themeListeners = new Set<() => void>();
+function subscribeTheme(cb: () => void) {
+  themeListeners.add(cb);
+  window.addEventListener("storage", cb);
+  return () => {
+    themeListeners.delete(cb);
+    window.removeEventListener("storage", cb);
+  };
+}
+function readTheme(): Theme {
+  return (localStorage.getItem(THEME_KEY) as Theme | null) ?? "system";
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>("system");
+  const theme = useSyncExternalStore(subscribeTheme, readTheme, () => "system" as Theme);
+  // Effects that update an external system (the DOM) are fine here.
   useEffect(() => {
-    const stored = (localStorage.getItem("zim-theme") as Theme | null) ?? "system";
-    setThemeState(stored);
-    applyTheme(stored);
-  }, []);
+    applyTheme(theme);
+  }, [theme]);
   const setTheme = useCallback((t: Theme) => {
-    setThemeState(t);
-    localStorage.setItem("zim-theme", t);
+    localStorage.setItem(THEME_KEY, t);
     applyTheme(t);
+    themeListeners.forEach((l) => l());
   }, []);
   return <ThemeCtx.Provider value={{ theme, setTheme }}>{children}</ThemeCtx.Provider>;
 }
