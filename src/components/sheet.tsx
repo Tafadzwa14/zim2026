@@ -15,29 +15,27 @@ export function Sheet({
   children: React.ReactNode;
 }) {
   const [mounted, setMounted] = useState(open);
-  const [shown, setShown] = useState(false);
-  const [prevOpen, setPrevOpen] = useState(open);
+  const [shown, setShown] = useState(open);
 
-  // Derive mount/animation state from the `open` prop during render — React's
-  // sanctioned pattern for adjusting state on a prop change. Mounting happens
-  // synchronously (so a hidden/background tab, where rAF is paused, still shows
-  // the sheet) rather than in an effect.
-  if (open !== prevOpen) {
-    setPrevOpen(open);
-    if (open) setMounted(true);
-    else setShown(false);
-  }
+  // Mount synchronously whenever we should be open. Self-correcting: any render
+  // where we're open but not yet mounted fixes it (rather than firing only on an
+  // open/close transition), so the sheet can never get stuck closed — and it
+  // still shows in a hidden/background tab, where effects run but rAF is paused.
+  if (open && !mounted) setMounted(true);
 
-  // Enter animation: flip to the shown state on the next frame once mounted.
+  // Drive the enter/exit animation from `open`, and unmount after the exit.
   useEffect(() => {
-    if (!open) return;
-    const r = requestAnimationFrame(() => setShown(true));
-    return () => cancelAnimationFrame(r);
-  }, [open]);
-
-  // Unmount once the exit transition has finished.
-  useEffect(() => {
-    if (open) return;
+    if (open) {
+      // Animate in on the next frame; a timer backstops a paused rAF (hidden or
+      // backgrounded tab) so the sheet still becomes visible either way.
+      const r = requestAnimationFrame(() => setShown(true));
+      const t = setTimeout(() => setShown(true), 60);
+      return () => {
+        cancelAnimationFrame(r);
+        clearTimeout(t);
+      };
+    }
+    setShown(false);
     const t = setTimeout(() => setMounted(false), 260);
     return () => clearTimeout(t);
   }, [open]);
