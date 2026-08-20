@@ -54,11 +54,19 @@ export const serverEnv = {
   get openaiModel(): string {
     return process.env.OPENAI_MODEL ?? "gpt-5.6";
   },
+  /** Itinerary reader: "local" (free, deterministic, no key) or "openai". */
+  get itineraryParser(): string {
+    return (process.env.ITINERARY_PARSER ?? "local").toLowerCase();
+  },
 };
 
-/** True once an OpenAI key is present (enables itinerary PDF parsing). */
+/**
+ * True when itinerary PDF upload is available. The local parser needs no key,
+ * so it's always on; the OpenAI reader needs a key.
+ */
 export function isItineraryParsingEnabled(): boolean {
-  return Boolean(process.env.OPENAI_API_KEY);
+  const parser = (process.env.ITINERARY_PARSER ?? "local").toLowerCase();
+  return parser === "local" || Boolean(process.env.OPENAI_API_KEY);
 }
 
 function required(name: string): string {

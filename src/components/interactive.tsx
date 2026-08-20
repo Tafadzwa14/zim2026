@@ -5,8 +5,8 @@ import { cn } from "@/lib/cn";
 import { EmptyState, List } from "@/components/ui";
 import { useAction } from "@/lib/use-action";
 import * as actions from "@/lib/actions";
-import { fmtDayShort } from "@/lib/format";
-import type { ShoppingView, TaskView } from "@/lib/repo/types";
+import { fmtDayShort, timeAgo } from "@/lib/format";
+import type { ActivityView, ShoppingView, TaskView } from "@/lib/repo/types";
 import type { ActionResult } from "@/lib/actions";
 import type { PublicUser } from "@/lib/types";
 
@@ -51,6 +51,8 @@ export function ShoppingItemRow({ item, meId, users = [] }: { item: ShoppingView
   const [picking, setPicking] = useState(false);
   const completed = optimistic ?? item.completed;
   useEffect(() => {
+    // Reconcile the optimistic tick to the server value once the action settles.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!pending) setOptimistic(null);
   }, [pending, item.completed]);
   const toggle = () => {
@@ -217,25 +219,32 @@ export function ShoppingList({ items, meId, users }: { items: ShoppingView[]; me
   );
 }
 
-export function TaskItemRow({ task, meId }: { task: TaskView; meId: string }) {
+export function TaskItemRow({ task, meId, today }: { task: TaskView; meId: string; today?: string }) {
   const { run } = useAction();
   const mine = task.assigned_to === meId;
+  const overdue = !task.completed && !!task.due_date && !!today && task.due_date < today;
   return (
-    <div className={cn("flex items-center gap-3 border-b border-line2 px-4 py-3.5 last:border-0", task.completed && "opacity-70")}>
+    <div className={cn("flex items-center gap-3 border-b border-line2 px-4 py-3.5 last:border-0", task.completed && "opacity-70", overdue && "bg-[color-mix(in_srgb,var(--warn)_8%,transparent)]")}>
       <button
         aria-label={task.completed ? "Mark not done" : "Mark done"}
         onClick={() => run(() => actions.toggleTask(task.id, !task.completed))}
-        className={cn("grid h-6 w-6 flex-none place-items-center rounded-lg border-2 text-sm text-white", task.completed ? "border-good bg-good" : "border-[#d9cdb8] bg-card")}
+        className={cn("grid h-6 w-6 flex-none place-items-center rounded-lg border-2 text-sm text-white", task.completed ? "border-good bg-good" : overdue ? "border-warn bg-card" : "border-[#d9cdb8] bg-card")}
       >
         {task.completed ? "✓" : ""}
       </button>
       <div className="min-w-0 flex-1">
-        <div className={cn("text-[15px] font-extrabold", task.completed && "line-through text-muted")}>{task.title}</div>
-        {task.assignee ? (
+        <div className={cn("flex items-center gap-1.5 text-[15px] font-extrabold", task.completed && "line-through text-muted")}>
+          {task.title}
+          {overdue && <span className="mono rounded bg-[color-mix(in_srgb,var(--warn)_18%,transparent)] px-1.5 py-0.5 text-[9px] font-bold uppercase text-warn">Overdue</span>}
+        </div>
+        {task.due_date && (
+          <div className={cn("text-xs font-semibold", overdue ? "text-warn" : "text-muted")}>
+            {overdue ? "Was due " : "Due "}{fmtDayShort(`${task.due_date}T00:00:00+02:00`)}
+          </div>
+        )}
+        {task.assignee && (
           <div className="text-xs font-semibold text-muted">{task.completed ? "Done" : "On it"}: {task.assignee.emoji} {task.assignee.name}</div>
-        ) : task.due_date ? (
-          <div className="text-xs font-semibold text-muted">Due {fmtDayShort(`${task.due_date}T00:00:00+02:00`)}</div>
-        ) : null}
+        )}
       </div>
       {!task.completed &&
         (task.assignee ? (
@@ -251,14 +260,124 @@ export function TaskItemRow({ task, meId }: { task: TaskView; meId: string }) {
   );
 }
 
-export function PickupControl({ travelId, driver, meId, isAdmin, big }: { travelId: string; driver: PublicUser | null; meId: string; isAdmin: boolean; big?: boolean }) {
+type TaskSeg = "all" | "mine" | "todo";
+
+/** Tasks page list with All / Mine / To-do filters and overdue-first ordering. */
+export function TaskList({ tasks, meId, today }: { tasks: TaskView[]; meId: string; today: string }) {
+  const [seg, setSeg] = useState<TaskSeg>("all");
+
+  const counts = useMemo(() => {
+    let all = 0, mine = 0, todo = 0;
+    for (const t of tasks) {
+      if (t.completed) continue;
+      all++;
+      if (t.assigned_to === meId) mine++;
+      if (!t.assigned_to) todo++;
+    }
+    return { all, mine, todo };
+  }, [tasks, meId]);
+
+  const visible = useMemo(() => {
+    const filtered = tasks.filter((t) => {
+      if (seg === "mine") return t.assigned_to === meId;
+      if (seg === "todo") return !t.assigned_to && !t.completed;
+      return true;
+    });
+    const rank = (t: TaskView) => {
+      if (t.completed) return 3;
+      if (t.due_date && t.due_date < today) return 0; // overdue first
+      if (t.due_date) return 1;
+      return 2;
+    };
+    return [...filtered].sort((a, b) => rank(a) - rank(b) || (a.due_date ?? "9999").localeCompare(b.due_date ?? "9999"));
+  }, [tasks, seg, meId, today]);
+
+  const segs: { key: TaskSeg; label: string; n: number }[] = [
+    { key: "all", label: "All", n: counts.all },
+    { key: "mine", label: "Mine", n: counts.mine },
+    { key: "todo", label: "Unclaimed", n: counts.todo },
+  ];
+
+  return (
+    <div>
+      <div role="tablist" aria-label="Filter tasks" className="mb-4 flex gap-1 rounded-xl border border-line bg-card p-1">
+        {segs.map((s) => (
+          <button
+            key={s.key}
+            role="tab"
+            aria-selected={seg === s.key}
+            onClick={() => setSeg(s.key)}
+            className={cn("flex-1 rounded-lg px-3 py-1.5 text-[13px] font-extrabold transition-colors", seg === s.key ? "bg-honey text-white" : "text-muted")}
+          >
+            {s.label}
+            <span className={cn("mono ml-1.5 text-[11px]", seg === s.key ? "text-white/80" : "text-muted")}>{s.n}</span>
+          </button>
+        ))}
+      </div>
+      {visible.length === 0 ? (
+        <EmptyState emoji={seg === "mine" ? "🙌" : "🎉"} title={seg === "mine" ? "Nothing on you" : "Nothing here"} hint={seg === "all" ? "No tasks right now." : "Switch to All to see everything."} />
+      ) : (
+        <List>{visible.map((t) => <TaskItemRow key={t.id} task={t} meId={meId} today={today} />)}</List>
+      )}
+    </div>
+  );
+}
+
+export function ActivityFeed({ activity, meId }: { activity: ActivityView[]; meId: string }) {
+  const [mineOnly, setMineOnly] = useState(false);
+  const visible = useMemo(() => (mineOnly ? activity.filter((a) => a.actor_user_id === meId) : activity), [activity, mineOnly, meId]);
+
+  return (
+    <div>
+      <div role="tablist" aria-label="Filter activity" className="mb-4 flex gap-1 rounded-xl border border-line bg-card p-1">
+        {[{ k: false, label: "Everyone" }, { k: true, label: "By me" }].map((t) => (
+          <button
+            key={String(t.k)}
+            role="tab"
+            aria-selected={mineOnly === t.k}
+            onClick={() => setMineOnly(t.k)}
+            className={cn("flex-1 rounded-lg px-3 py-1.5 text-[13px] font-extrabold transition-colors", mineOnly === t.k ? "bg-honey text-white" : "text-muted")}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {visible.length === 0 ? (
+        <EmptyState emoji="🔕" title="Nothing from you yet" hint="Switch to Everyone to see all activity." />
+      ) : (
+        <div className="zc-card px-4 py-1">
+          {visible.map((a) => (
+            <div key={a.id} className="flex gap-3 border-b border-line2 py-3.5 last:border-0">
+              <span className="grid h-9 w-9 flex-none place-items-center rounded-full bg-chip text-xl" aria-hidden>{a.actor?.emoji ?? "👤"}</span>
+              <div>
+                <div className="text-sm font-semibold leading-snug"><b>{a.actor?.name ?? "Someone"}</b> {(a.metadata as { text?: string })?.text}</div>
+                <div className="mono mt-0.5 text-[10.5px] text-muted">{timeAgo(a.created_at)}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function PickupControl({ travelId, driver, meId, isAdmin, big, enRoute }: { travelId: string; driver: PublicUser | null; meId: string; isAdmin: boolean; big?: boolean; enRoute?: boolean }) {
   const { run } = useAction();
   if (driver) {
     const canRelease = driver.id === meId || isAdmin;
+    const canDrive = driver.id === meId || isAdmin;
     return (
-      <div className="flex items-center gap-2">
+      <div className="flex w-full flex-wrap items-center gap-2">
         <b className="text-[15px]">Pickup: {driver.emoji} {driver.name} ✓</b>
-        {canRelease && <Btn className="ml-auto" onClick={() => run(() => actions.releasePickup(travelId))}>{driver.id === meId ? "Release" : "Reassign"}</Btn>}
+        {enRoute && <span className="rounded-full bg-[color-mix(in_srgb,var(--good)_18%,transparent)] px-2 py-0.5 text-[11px] font-bold text-good">🚗 On the way</span>}
+        <div className="ml-auto flex items-center gap-2">
+          {canDrive && (
+            <Btn variant={enRoute ? "outline" : "solid"} onClick={() => run(() => actions.setPickupEnRoute(travelId, !enRoute))}>
+              {enRoute ? "Not yet" : "I'm on my way"}
+            </Btn>
+          )}
+          {canRelease && <Btn onClick={() => run(() => actions.releasePickup(travelId))}>{driver.id === meId ? "Release" : "Reassign"}</Btn>}
+        </div>
       </div>
     );
   }

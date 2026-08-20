@@ -308,14 +308,24 @@ export function TaskForm({ onDone }: { onDone: () => void }) {
 
 export function AnnouncementForm({ onDone }: { onDone: () => void }) {
   const { run, pending } = useAction();
-  const [form, setForm] = useState({ title: "", content: "" });
+  const [form, setForm] = useState({ title: "", content: "", expiry: "" });
   const [pinned, setPinned] = useState(true);
   return (
-    <form onSubmit={(e) => { e.preventDefault(); run(() => actions.addAnnouncement({ title: form.title, content: form.content || null, is_pinned: pinned }), { onSuccess: onDone }); }}>
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        // Expiry is end-of-day on the chosen date.
+        const expires_at = form.expiry ? new Date(`${form.expiry}T23:59:59`).toISOString() : null;
+        run(() => actions.addAnnouncement({ title: form.title, content: form.content || null, is_pinned: pinned, expires_at }), { onSuccess: onDone });
+      }}
+    >
       <label className="zc-label">Title</label>
       <input className="zc-input" autoFocus placeholder="e.g. Tailor tomorrow 10 AM" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
       <label className="zc-label">Details (optional)</label>
       <textarea className="zc-input min-h-16" value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} />
+      <label className="zc-label">Auto-remove after (optional)</label>
+      <input type="date" className="zc-input" value={form.expiry} onChange={(e) => setForm({ ...form, expiry: e.target.value })} />
+      <p className="mt-1 text-xs text-muted">Leave blank to keep it until you remove it.</p>
       <Toggle on={pinned} onToggle={() => setPinned(!pinned)} label="📌 Pin to Home" />
       <button className="zc-btn mt-5 w-full" disabled={pending}>Post announcement</button>
     </form>

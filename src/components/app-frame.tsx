@@ -52,6 +52,7 @@ export function AppFrame({
     ...(user.is_admin ? [{ href: "/family", icon: "👥", label: "Family" }] : []),
     { href: "/shopping", icon: "🛒", label: "Shopping", badge: counts.shopping },
     { href: "/tasks", icon: "✅", label: "Tasks", badge: counts.tasks },
+    { href: "/photos", icon: "📷", label: "Photos" },
     { href: "/info", icon: "ℹ️", label: "Important info" },
     { href: "/activity", icon: "🔔", label: "Activity" },
     ...(user.is_admin ? [{ href: "/admin", icon: "🛡️", label: "Admin" }] : []),

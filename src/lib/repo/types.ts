@@ -5,14 +5,18 @@ import type {
   FlightLeg,
   FlightStatus,
   ImportantInfo,
+  Photo,
   Place,
   Plan,
   PlanCategory,
   Pickup,
+  Poll,
+  PollOption,
   PublicUser,
   ShoppingItem,
   Task,
   TravelGroup,
+  UserPrefs,
 } from "@/lib/types";
 
 // ---- view models (joined for the UI) ----
@@ -45,6 +49,20 @@ export interface ActivityView extends Activity {
 }
 export interface AnnouncementView extends Announcement {
   creator: PublicUser | null;
+}
+export interface PollOptionView extends PollOption {
+  votes: number;
+}
+export interface PollView extends Poll {
+  options: PollOptionView[];
+  total: number;
+  myOptionId: string | null;
+  creator: PublicUser | null;
+}
+export interface PhotoView extends Photo {
+  /** Publicly reachable URL for the image (public bucket / data URL in memory). */
+  url: string;
+  uploader: PublicUser | null;
 }
 
 // ---- inputs ----
@@ -113,7 +131,21 @@ export interface NewAnnouncementInput {
   title: string;
   content?: string | null;
   is_pinned: boolean;
+  expires_at?: string | null;
   created_by: string;
+}
+export interface NewPollInput {
+  question: string;
+  options: string[];
+  created_by: string;
+}
+export interface NewPhotoInput {
+  bytes: Uint8Array;
+  fileName: string;
+  contentType: string;
+  size: number;
+  caption?: string | null;
+  uploaded_by: string;
 }
 
 export type ClaimResult = { ok: true } | { ok: false; claimedBy: string | null };
@@ -152,8 +184,12 @@ export interface Repo {
   /** Admin roster: every user plus whether they've claimed their identity. */
   listRoster(): Promise<RosterUser[]>;
   resetUserPin(id: string): Promise<void>;
+  /** Public: flag that a person wants their PIN reset. Returns false if unknown. */
+  requestPinReset(username: string): Promise<boolean>;
   setUserRoles(id: string, roles: string[]): Promise<void>;
   setUserLocation(id: string, stayingAt: string | null): Promise<void>;
+  /** Self-serve: persist a person's UI preferences (home layout). */
+  setUserPrefs(id: string, prefs: UserPrefs): Promise<void>;
   deleteUser(id: string): Promise<void>;
   setAdmin(id: string, isAdmin: boolean): Promise<void>;
   setUserStatus(id: string, status: "upcoming" | "travelling" | "here"): Promise<void>;
@@ -184,6 +220,7 @@ export interface Repo {
   requestPickup(travelGroupId: string, flightLegId: string | null): Promise<void>;
   claimPickup(travelGroupId: string, userId: string): Promise<ClaimResult>;
   releasePickup(travelGroupId: string): Promise<void>;
+  setPickupEnRoute(travelGroupId: string, enRoute: boolean): Promise<void>;
 
   // shopping
   listShopping(): Promise<ShoppingView[]>;
@@ -212,4 +249,16 @@ export interface Repo {
   deleteAnnouncement(id: string): Promise<void>;
   listActivity(limit?: number): Promise<ActivityView[]>;
   addActivity(actorId: string, type: string, text: string, entity?: { type: string; id: string }): Promise<void>;
+
+  // polls
+  listPolls(userId: string): Promise<PollView[]>;
+  createPoll(input: NewPollInput): Promise<PollView>;
+  votePoll(pollId: string, optionId: string, userId: string): Promise<void>;
+  setPollClosed(id: string, closed: boolean): Promise<void>;
+  deletePoll(id: string): Promise<void>;
+
+  // photos
+  listPhotos(): Promise<PhotoView[]>;
+  addPhoto(input: NewPhotoInput): Promise<PhotoView>;
+  deletePhoto(id: string): Promise<void>;
 }

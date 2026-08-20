@@ -22,7 +22,8 @@ export async function getDashboard() {
   const here = users.filter((u) => u.status === "here");
   const comingNext = travel.filter((t) => t.status === "upcoming");
   const dinner = plans.find((p) => p.category === "dinner" && p.date === today) ?? null;
-  const pinned = announcements.find((a) => a.is_pinned) ?? null;
+  const nowIso = new Date().toISOString();
+  const pinned = announcements.find((a) => a.is_pinned && (!a.expires_at || a.expires_at > nowIso)) ?? null;
   const pickupsOpen = travel.filter((t) => t.pickup?.requested);
 
   return {
