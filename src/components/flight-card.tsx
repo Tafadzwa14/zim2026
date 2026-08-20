@@ -80,12 +80,35 @@ function StatusBadge({ status }: { status: FlightLeg["status"] }) {
   );
 }
 
+/** Progress of a single leg: 0 while scheduled, live/estimated while airborne, 1 once landed. */
+function legProgress(l: FlightLeg): number {
+  if (l.status === "landed") return 1;
+  if (l.status === "air") return l.progress || progressFromTimes(l.estimated_departure ?? l.scheduled_departure, l.estimated_arrival ?? l.scheduled_arrival);
+  return 0;
+}
+
 export function FlightCard({ travel, full = false }: { travel: TravelView; full?: boolean }) {
-  const leg = travel.activeLeg;
-  if (!leg) return null;
-  const dep = leg.estimated_departure ?? leg.scheduled_departure;
-  const arr = leg.estimated_arrival ?? leg.scheduled_arrival;
-  const progress = leg.status === "landed" ? 1 : leg.status === "air" ? (leg.progress || progressFromTimes(dep, arr)) : 0;
+  const active = travel.activeLeg;
+  if (!active) return null;
+  // The whole journey, in order. The hero shows trip endpoints (first origin →
+  // final destination) so a multi-leg trip reads as one journey, while live
+  // tracking (delay, "to go", radar source) stays keyed to the active leg.
+  const legs = travel.legs.length ? travel.legs : [active];
+  const first = legs[0];
+  const last = legs[legs.length - 1];
+  const multi = legs.length > 1;
+  const originAirport = multi ? first.origin_airport : active.origin_airport;
+  const originCity = multi ? first.origin_city : active.origin_city;
+  const destAirport = multi ? last.destination_airport : active.destination_airport;
+  const destCity = multi ? last.destination_city : active.destination_city;
+  const dep = active.estimated_departure ?? active.scheduled_departure;
+  const arrActive = active.estimated_arrival ?? active.scheduled_arrival;
+  const finalArr = last.estimated_arrival ?? last.scheduled_arrival;
+  const allLanded = legs.every((l) => l.status === "landed");
+  // Overall trip progress: mean of the per-leg progress across the whole journey.
+  const progress = multi ? legs.reduce((s, l) => s + legProgress(l), 0) / legs.length : legProgress(active);
+  const stops = legs.slice(0, -1).map((l) => l.destination_airport);
+  const routeAirports = [first.origin_airport, ...legs.map((l) => l.destination_airport)];
   const driver = travel.driver;
 
   const inner = (
@@ -93,36 +116,42 @@ export function FlightCard({ travel, full = false }: { travel: TravelView; full?
       <span className="pointer-events-none absolute -right-8 -top-11 h-48 w-48 rounded-full" style={{ background: "var(--flight-radial)" }} />
       <div className="relative flex items-center justify-between">
         <div>
-          <span className="mono text-[18px] font-semibold">{leg.flight_number}</span>
-          <span className="ml-1.5 text-[11px] font-bold uppercase tracking-wide text-[var(--flight-label)]">{leg.airline_name}</span>
+          <span className="mono text-[18px] font-semibold">{active.flight_number}</span>
+          <span className="ml-1.5 text-[11px] font-bold uppercase tracking-wide text-[var(--flight-label)]">{active.airline_name}</span>
         </div>
-        <StatusBadge status={leg.status} />
+        <StatusBadge status={active.status} />
       </div>
+      {multi && (
+        <div className="relative mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] font-semibold text-[var(--flight-label)]">
+          <span className="mono">{routeAirports.join(" › ")}</span>
+          <span>· {stops.length} stop{stops.length > 1 ? "s" : ""}</span>
+        </div>
+      )}
       <div className="relative mt-3.5 flex items-end justify-between">
         <div>
-          <div className="mono text-[30px] font-semibold leading-none">{leg.origin_airport}</div>
-          <div className="mt-0.5 text-[11px] font-bold text-[var(--flight-label)]">{leg.origin_city}</div>
+          <div className="mono text-[30px] font-semibold leading-none">{originAirport}</div>
+          <div className="mt-0.5 text-[11px] font-bold text-[var(--flight-label)]">{originCity}</div>
         </div>
         <div className="flex flex-col items-center gap-1 pb-1">
-          {leg.status === "air" && (
+          {active.status === "air" && (
             <>
               <span className="mono text-xs font-semibold text-honey2">{Math.round(progress * 100)}%</span>
-              <SourceTag source={leg.progress_source} />
+              <SourceTag source={active.progress_source} />
             </>
           )}
         </div>
         <div className="text-right">
-          <div className="mono text-[30px] font-semibold leading-none">{leg.destination_airport}</div>
-          <div className="mt-0.5 text-[11px] font-bold text-[var(--flight-label)]">{leg.destination_city}</div>
+          <div className="mono text-[30px] font-semibold leading-none">{destAirport}</div>
+          <div className="mt-0.5 text-[11px] font-bold text-[var(--flight-label)]">{destCity}</div>
         </div>
       </div>
       <RouteMap progress={progress} />
       <div className="relative mt-3.5 flex gap-[7px]">
         {[
-          { v: fmtTime(arr), k: leg.status === "landed" ? "Arrived" : "Lands" },
-          { v: leg.delay_minutes && leg.delay_minutes > 0 ? `+${leg.delay_minutes} min` : "On time", k: "Delay", late: (leg.delay_minutes ?? 0) > 0 },
-          { v: leg.status === "landed" ? "✓" : remainingLabel(dep, arr, progress) || "—", k: leg.status === "landed" ? "Status" : "To go" },
-          { v: leg.aircraft_type_code ?? "—", k: "Aircraft" },
+          { v: fmtTime(finalArr), k: allLanded ? "Arrived" : "Lands" },
+          { v: active.delay_minutes && active.delay_minutes > 0 ? `+${active.delay_minutes} min` : "On time", k: "Delay", late: (active.delay_minutes ?? 0) > 0 },
+          { v: allLanded ? "✓" : remainingLabel(dep, arrActive, legProgress(active)) || "—", k: allLanded ? "Status" : "To go" },
+          { v: active.aircraft_type_code ?? "—", k: "Aircraft" },
         ].map((m, i) => (
           <div key={i} className="flex-1 rounded-[14px] border border-white/5 bg-white/[.07] px-1.5 py-2.5 text-center">
             <div className={cn("mono text-[14px] font-semibold", m.late && "text-[#f0b84e]")}>{m.v}</div>

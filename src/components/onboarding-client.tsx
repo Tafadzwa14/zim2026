@@ -6,6 +6,7 @@ import { cn } from "@/lib/cn";
 import { EMOJIS } from "@/lib/display";
 import { useAction } from "@/lib/use-action";
 import * as actions from "@/lib/actions";
+import { Spinner } from "@/components/ui";
 import type { PublicUser } from "@/lib/types";
 
 export function OnboardingClient({ pending, claimed }: { pending: PublicUser[]; claimed: PublicUser[] }) {
@@ -107,7 +108,7 @@ export function OnboardingClient({ pending, claimed }: { pending: PublicUser[]; 
               <label className="zc-label">Set a 4-digit PIN</label>
               {pinBox(pin, setPin, pinRefs)}
               <p className="text-xs text-muted">Your PIN lets you reclaim your identity on another device. Stored hashed, never in plain text.</p>
-              <button className="zc-btn mt-5 w-full" disabled={busy || !chosen}>Enter Zim 2026 →</button>
+              <button className="zc-btn mt-5 w-full" disabled={busy || !chosen}>{busy && <Spinner />}{busy ? "Entering…" : "Enter Zim 2026 →"}</button>
             </form>
           )
         ) : claimed.length === 0 ? (
@@ -126,7 +127,7 @@ export function OnboardingClient({ pending, claimed }: { pending: PublicUser[]; 
             </select>
             <label className="zc-label">4-digit PIN</label>
             {pinBox(rPin, setRPin, rPinRefs)}
-            <button className="zc-btn mt-5 w-full" disabled={busy || !rUser}>Restore identity</button>
+            <button className="zc-btn mt-5 w-full" disabled={busy || !rUser}>{busy && <Spinner />}{busy ? "Restoring…" : "Restore identity"}</button>
             <button
               type="button"
               disabled={busy || !rUser}

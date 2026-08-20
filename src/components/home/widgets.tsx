@@ -131,6 +131,10 @@ export function MyStatTile({ d }: { d: Dashboard }) {
 function ArrivalRow({ t }: { t: TravelView }) {
   const leg = t.activeLeg;
   if (!leg) return null;
+  const legs = t.legs.length ? t.legs : [leg];
+  const first = legs[0];
+  const last = legs[legs.length - 1];
+  const stops = legs.length - 1;
   const air = leg.status === "air";
   const late = leg.status !== "landed" && (leg.delay_minutes ?? 0) > 0;
   return (
@@ -138,7 +142,7 @@ function ArrivalRow({ t }: { t: TravelView }) {
       <span className="text-2xl" aria-hidden>{t.members[0]?.emoji ?? "✈️"}</span>
       <span>
         <span className="block text-[15px] font-extrabold">{t.title}</span>
-        <span className="mono block text-[10.5px] text-muted">{leg.flight_number} · {leg.origin_airport}→{leg.destination_airport}</span>
+        <span className="mono block text-[10.5px] text-muted">{first.origin_airport}→{last.destination_airport}{stops > 0 ? ` · ${stops} stop${stops > 1 ? "s" : ""}` : ` · ${leg.flight_number}`}</span>
       </span>
       <span className="text-right">
         <span className="mono block text-[15px] font-semibold">{leg.status === "scheduled" ? fmtDayShortUpper(t.arrivalIso) : fmtTime(t.arrivalIso)}</span>

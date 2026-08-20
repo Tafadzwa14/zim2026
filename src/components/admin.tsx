@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { useAction } from "@/lib/use-action";
 import * as actions from "@/lib/actions";
+import { Spinner } from "@/components/ui";
 import { mapsUrl } from "@/lib/maps";
 import { isoToTripInput, tripInputToIso } from "@/lib/format";
 import { ROLES } from "@/lib/types";
@@ -85,7 +86,7 @@ export function AddPersonForm() {
         <input type="checkbox" checked={admin} onChange={(e) => setAdmin(e.target.checked)} /> Make them an admin
       </label>
       <div className="mt-4 flex gap-2">
-        <button className="zc-btn flex-1 py-2.5 text-sm" disabled={pending}>Add person</button>
+        <button className="zc-btn flex-1 py-2.5 text-sm" disabled={pending}>{pending && <Spinner />}{pending ? "Adding…" : "Add person"}</button>
         <button type="button" onClick={() => setOpen(false)} className="zc-btn zc-btn-ghost flex-1 py-2.5 text-sm">Cancel</button>
       </div>
     </form>
@@ -264,7 +265,8 @@ export function BulkLocation({ roster, places }: { roster: RosterUser[]; places:
         disabled={pending || !place || picked.size === 0}
         className="zc-btn mt-4 w-full py-2.5 text-sm disabled:opacity-50"
       >
-        {picked.size > 0 && place ? `Set ${picked.size} at ${place}` : "Set location for selected"}
+        {pending && <Spinner />}
+        {pending ? "Setting…" : picked.size > 0 && place ? `Set ${picked.size} at ${place}` : "Set location for selected"}
       </button>
     </div>
   );
@@ -368,7 +370,7 @@ export function FlightEditForm({ leg }: { leg: FlightLeg }) {
         {FLIGHT_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
       </select>
       <div className="mt-4 flex gap-2">
-        <button className="zc-btn flex-1 py-2.5 text-sm" disabled={pending}>Save flight</button>
+        <button className="zc-btn flex-1 py-2.5 text-sm" disabled={pending}>{pending && <Spinner />}{pending ? "Saving…" : "Save flight"}</button>
         <button type="button" onClick={() => setOpen(false)} className="zc-btn zc-btn-ghost flex-1 py-2.5 text-sm">Cancel</button>
       </div>
     </form>

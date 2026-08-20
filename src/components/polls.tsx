@@ -4,7 +4,7 @@ import { useState } from "react";
 import { cn } from "@/lib/cn";
 import { useAction } from "@/lib/use-action";
 import * as actions from "@/lib/actions";
-import { EmptyState } from "@/components/ui";
+import { EmptyState, Spinner } from "@/components/ui";
 import type { PollView } from "@/lib/repo/types";
 
 function PollCard({ poll, meId, isAdmin }: { poll: PollView; meId: string; isAdmin: boolean }) {
@@ -94,7 +94,7 @@ function NewPoll({ onDone }: { onDone: () => void }) {
       {options.length < 6 && (
         <button type="button" onClick={() => setOptions((o) => [...o, ""])} className="mt-2 text-sm font-extrabold text-honey">+ Add option</button>
       )}
-      <button className="zc-btn mt-4 w-full py-2.5 text-sm" disabled={pending}>Post poll</button>
+      <button className="zc-btn mt-4 w-full py-2.5 text-sm" disabled={pending}>{pending && <Spinner />}{pending ? "Posting…" : "Post poll"}</button>
     </form>
   );
 }

@@ -5,6 +5,7 @@ import { cn } from "@/lib/cn";
 import { CATEGORIES } from "@/lib/display";
 import { useAction } from "@/lib/use-action";
 import * as actions from "@/lib/actions";
+import { Spinner } from "@/components/ui";
 import { isoToTripInput, tripInputToIso } from "@/lib/format";
 import type { NewLegInput } from "@/lib/repo/types";
 import type { Place, PlanCategory, PublicUser } from "@/lib/types";
@@ -105,7 +106,7 @@ export function PlanForm({ me, users, places = [], onDone }: FormProps) {
       <Toggle on={anyone} onToggle={() => setAnyone(!anyone)} label="Anyone can join" />
       <label className="zc-label">Notes (optional)</label>
       <textarea className="zc-input min-h-16" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-      <button className="zc-btn mt-5 w-full" disabled={pending}>Create plan</button>
+      <button className="zc-btn mt-5 w-full" disabled={pending}>{pending && <Spinner />}{pending ? "Creating…" : "Create plan"}</button>
     </form>
   );
 }
@@ -213,7 +214,7 @@ export function TravelForm({ me, users, onDone }: FormProps) {
       <label className="zc-label mt-4">Who&apos;s travelling?</label>
       <PeoplePicker users={users} value={travellers} onChange={setTravellers} />
       <Toggle on={pickup} onToggle={() => setPickup(!pickup)} label="Need airport pickup?" />
-      <button className="zc-btn mt-5 w-full" disabled={pending}>Add travel</button>
+      <button className="zc-btn mt-5 w-full" disabled={pending}>{pending && <Spinner />}{pending ? "Adding…" : "Add travel"}</button>
     </form>
   );
 }
@@ -293,7 +294,7 @@ export function TaskForm({ onDone }: { onDone: () => void }) {
       <input type="date" className="zc-input" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} />
       <label className="zc-label">Notes (optional)</label>
       <textarea className="zc-input min-h-16" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-      <button className="zc-btn mt-5 w-full" disabled={pending}>Add task</button>
+      <button className="zc-btn mt-5 w-full" disabled={pending}>{pending && <Spinner />}{pending ? "Adding…" : "Add task"}</button>
     </form>
   );
 }
@@ -319,7 +320,7 @@ export function AnnouncementForm({ onDone }: { onDone: () => void }) {
       <input type="date" className="zc-input" value={form.expiry} onChange={(e) => setForm({ ...form, expiry: e.target.value })} />
       <p className="mt-1 text-xs text-muted">Leave blank to keep it until you remove it.</p>
       <Toggle on={pinned} onToggle={() => setPinned(!pinned)} label="📌 Pin to Home" />
-      <button className="zc-btn mt-5 w-full" disabled={pending}>Post announcement</button>
+      <button className="zc-btn mt-5 w-full" disabled={pending}>{pending && <Spinner />}{pending ? "Posting…" : "Post announcement"}</button>
     </form>
   );
 }

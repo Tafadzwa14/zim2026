@@ -65,6 +65,19 @@ export function LiveDot() {
   return <span className="zc-pulse inline-block h-[7px] w-[7px] rounded-full bg-good shadow-[0_0_7px_var(--good)]" />;
 }
 
+// Inline processing spinner. Draws in the current text colour so it reads on
+// coloured buttons (white on honey) and plain text alike.
+export function Spinner({ size = 16, className }: { size?: number; className?: string }) {
+  return (
+    <span
+      role="status"
+      aria-label="Processing"
+      className={cn("inline-block flex-none animate-spin rounded-full border-2 border-current border-t-transparent align-[-2px]", className)}
+      style={{ width: size, height: size }}
+    />
+  );
+}
+
 export function Screen({ title, sub, action, children }: { title: ReactNode; sub?: ReactNode; action?: ReactNode; children: ReactNode }) {
   return (
     <div className="mx-auto max-w-xl px-[18px] pt-4 md:max-w-2xl md:px-6 lg:max-w-3xl lg:px-8 lg:pt-7">

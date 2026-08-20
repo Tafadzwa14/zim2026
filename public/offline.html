@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Offline — Zim 2026</title>
+    <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+    <style>
+      :root {
+        --paper: #f3f5f8;
+        --card: #ffffff;
+        --ink: #1c2733;
+        --muted: #5c6b7a;
+        --line: #dce3ea;
+        --honey: #2f6f8f;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --paper: #0e131c;
+          --card: #161d29;
+          --ink: #e7edf4;
+          --muted: #93a1b1;
+          --line: #26303e;
+          --honey: #4bb8d8;
+        }
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; }
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: var(--paper);
+        color: var(--ink);
+        font-family: "Nunito", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      .card {
+        width: 100%;
+        max-width: 360px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 20px;
+        padding: 32px 24px;
+        text-align: center;
+        box-shadow: 0 10px 30px rgba(15, 30, 45, 0.06);
+      }
+      .icon { font-size: 44px; line-height: 1; }
+      h1 {
+        margin: 16px 0 8px;
+        font-size: 20px;
+        font-weight: 800;
+        letter-spacing: -0.01em;
+      }
+      p {
+        margin: 0 auto;
+        max-width: 30ch;
+        font-size: 14px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      button {
+        margin-top: 22px;
+        width: 100%;
+        padding: 12px 16px;
+        border: none;
+        border-radius: 12px;
+        background: var(--honey);
+        color: #fff;
+        font-size: 14px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+      button:active { transform: translateY(1px); }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <div class="icon" aria-hidden="true">📡</div>
+      <h1>You're offline</h1>
+      <p>Zim 2026 can't reach the network right now. Check your connection and try again.</p>
+      <button type="button" onclick="location.reload()">Try again</button>
+    </main>
+    <script>
+      // Auto-reload the moment the connection comes back.
+      window.addEventListener("online", () => location.reload());
+    </script>
+  </body>
+</html>

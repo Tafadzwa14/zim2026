@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAction } from "@/lib/use-action";
 import * as actions from "@/lib/actions";
+import { Spinner } from "@/components/ui";
 import type { AppSettings } from "@/lib/types";
 
 export function SignOutButton() {
@@ -27,7 +28,7 @@ export function SettingsForm({ settings }: { settings: AppSettings }) {
       <input type="date" className="zc-input" value={f.wedding_date} onChange={(e) => setF({ ...f, wedding_date: e.target.value })} />
       <label className="zc-label">Wedding website URL</label>
       <input className="zc-input" value={f.wedding_url} onChange={(e) => setF({ ...f, wedding_url: e.target.value })} placeholder="https://…" />
-      <button className="zc-btn mt-4 w-full py-3 text-sm" disabled={pending}>Save settings</button>
+      <button className="zc-btn mt-4 w-full py-3 text-sm" disabled={pending}>{pending && <Spinner />}{pending ? "Saving…" : "Save settings"}</button>
     </form>
   );
 }

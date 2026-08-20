@@ -13,6 +13,10 @@ import type { PublicUser } from "@/lib/types";
 function Row({ t }: { t: TravelView }) {
   const leg = t.activeLeg;
   if (!leg) return null;
+  const legs = t.legs.length ? t.legs : [leg];
+  const first = legs[0];
+  const last = legs[legs.length - 1];
+  const stops = legs.length - 1;
   const meta = flightStatusMeta(leg.status);
   const air = leg.status === "air";
   const late = leg.status !== "landed" && (leg.delay_minutes ?? 0) > 0;
@@ -21,7 +25,7 @@ function Row({ t }: { t: TravelView }) {
       <span className="text-2xl" aria-hidden>{t.members[0]?.emoji ?? "✈️"}</span>
       <span>
         <span className="block text-[15px] font-extrabold">{t.title}</span>
-        <span className="mono block text-[10.5px] text-muted">{leg.flight_number} · {leg.origin_airport}→{leg.destination_airport}</span>
+        <span className="mono block text-[10.5px] text-muted">{first.origin_airport}→{last.destination_airport}{stops > 0 ? ` · ${stops} stop${stops > 1 ? "s" : ""}` : ` · ${leg.flight_number}`}</span>
       </span>
       <span className="text-right">
         <span className="mono block text-[15px] font-semibold">{leg.status === "scheduled" ? fmtDayShortUpper(t.arrivalIso) : fmtTime(t.arrivalIso)}</span>
@@ -33,16 +37,19 @@ function Row({ t }: { t: TravelView }) {
 
 function PickupCard({ t, me, users }: { t: TravelView; me: PublicUser; users: PublicUser[] }) {
   const leg = t.activeLeg;
+  const legs = t.legs.length ? t.legs : leg ? [leg] : [];
+  const first = legs[0];
+  const last = legs[legs.length - 1];
   const driver = t.pickup?.driver_user_id ? users.find((u) => u.id === t.pickup?.driver_user_id) ?? null : null;
   const drivers = users.filter((u) => u.is_admin || u.roles.includes("driver"));
   return (
     <div className="zc-card p-4">
       <div className="flex items-baseline justify-between">
         <div className="mono font-semibold">{fmtDayShortUpper(t.arrivalIso)} · {fmtTime(t.arrivalIso)}</div>
-        {leg && <CatPill icon="✈️" label={leg.flight_number} />}
+        {last && <CatPill icon="✈️" label={last.flight_number} />}
       </div>
       <div className="disp my-2 text-lg font-extrabold">{t.members.map((m) => m.emoji).join(" ")} {t.title}</div>
-      {leg && <div className="mono text-[11px] text-muted">{leg.origin_city} → {leg.destination_city}</div>}
+      {first && last && <div className="mono text-[11px] text-muted">{first.origin_city} → {last.destination_city}</div>}
       <div className="mt-3"><PickupControl travelId={t.id} driver={driver} meId={me.id} isAdmin={me.is_admin} canDrive={me.is_admin || me.roles.includes("driver")} drivers={drivers} big={!driver} enRoute={t.pickup?.driver_en_route} /></div>
     </div>
   );

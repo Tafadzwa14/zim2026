@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { getRepo } from "@/lib/repo";
 import { getCurrentUser } from "@/lib/identity";
-import { fmtDateLong, fmtDayShort, fmtTime, fmtTime24, timeAgo, tripDateOf } from "@/lib/format";
+import { fmtDateLong, fmtDayShort, fmtTime, timeAgo, tripDateOf } from "@/lib/format";
+import { flightStatusMeta } from "@/lib/display";
 import { getArrivalWeather } from "@/lib/weather";
 import { FlightCard } from "@/components/flight-card";
 import { WorldClocks } from "@/components/world-clocks";
@@ -9,30 +10,52 @@ import { airportZone } from "@/lib/airports";
 import { BackHeader, PersonChip, SectionHeader } from "@/components/ui";
 import { FlightStatusAdmin, PickupControl, RefreshFlight } from "@/components/interactive";
 import { FlightEditForm } from "@/components/admin";
+import type { FlightLeg } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+
+/** Minutes between two ISO instants, or null if either is missing. */
+function minutesBetween(a: string | null | undefined, b: string | null | undefined): number | null {
+  if (!a || !b) return null;
+  const mins = Math.round((new Date(b).getTime() - new Date(a).getTime()) / 60000);
+  return Number.isFinite(mins) ? mins : null;
+}
+
+function durLabel(mins: number): string {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return h ? `${h}h${m ? ` ${m}m` : ""}` : `${m}m`;
+}
 
 export default async function FlightDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const [t, me, users] = await Promise.all([getRepo().getTravel(id), getCurrentUser(), getRepo().listUsers()]);
   if (!t || !me) return notFound();
   const drivers = users.filter((u) => u.is_admin || u.roles.includes("driver"));
-  const leg = t.activeLeg;
-  if (!leg) return notFound();
+  const active = t.activeLeg;
+  if (!active) return notFound();
+  const legs = t.legs.length ? t.legs : [active];
+  const finalLeg = legs[legs.length - 1];
+  const multi = legs.length > 1;
   const driver = t.driver;
-  const arr = leg.estimated_arrival ?? leg.scheduled_arrival;
+  // Arrival = the journey's final destination, not whichever leg is active now.
+  const arr = finalLeg.estimated_arrival ?? finalLeg.scheduled_arrival;
 
   // "Current airport" for the world clocks: where the traveller is (or is
   // heading). Origin while waiting/boarding, destination once airborne or landed.
-  const atArrivalEnd = leg.status === "air" || leg.status === "landed";
-  const clockAirport = atArrivalEnd ? leg.destination_airport : leg.origin_airport;
-  const clockCity = atArrivalEnd ? leg.destination_city : leg.origin_city;
-  const clockLabel = leg.status === "air" ? `Arriving ${clockAirport}` : clockAirport;
-  const weather = arr ? await getArrivalWeather(leg.destination_city, tripDateOf(arr)) : null;
+  const atArrivalEnd = active.status === "air" || active.status === "landed";
+  const clockAirport = atArrivalEnd ? active.destination_airport : active.origin_airport;
+  const clockCity = atArrivalEnd ? active.destination_city : active.origin_city;
+  const clockLabel = active.status === "air" ? `Arriving ${clockAirport}` : clockAirport;
+  const weather = arr ? await getArrivalWeather(finalLeg.destination_city, tripDateOf(arr)) : null;
+
+  const title = multi
+    ? `${legs[0].origin_airport} → ${finalLeg.destination_airport}`
+    : `${active.flight_number} · ${active.airline_name}`;
 
   return (
     <div className="mx-auto max-w-xl px-[18px] lg:max-w-3xl lg:px-8">
-      <BackHeader title={`${leg.flight_number} · ${leg.airline_name}`} href="/flights" />
+      <BackHeader title={title} href="/flights" />
       <div className="mt-3">
         <FlightCard travel={t} full />
 
@@ -43,18 +66,37 @@ export default async function FlightDetail({ params }: { params: Promise<{ id: s
         />
 
         <div className="mt-3 flex items-center justify-between">
-          <span className="mono text-[11px] text-muted">Updated {timeAgo(leg.last_synced_at ?? new Date().toISOString())}</span>
+          <span className="mono text-[11px] text-muted">Updated {timeAgo(active.last_synced_at ?? new Date().toISOString())}</span>
           <RefreshFlight travelId={t.id} />
+        </div>
+
+        <SectionHeader meta={multi ? `${legs.length} flights` : undefined}>Itinerary</SectionHeader>
+        <div className="flex flex-col gap-2.5">
+          {legs.map((leg, i) => {
+            const layover = i > 0 ? minutesBetween(legs[i - 1].scheduled_arrival, leg.scheduled_departure) : null;
+            return (
+              <div key={leg.id}>
+                {layover != null && layover > 0 && (
+                  <div className="mono mb-2.5 flex items-center gap-2 px-1 text-[11px] font-semibold text-muted">
+                    <span className="h-px flex-1 bg-line" />
+                    🕓 {durLabel(layover)} layover in {leg.origin_city} ({leg.origin_airport})
+                    <span className="h-px flex-1 bg-line" />
+                  </div>
+                )}
+                <ItineraryLeg leg={leg} index={i} total={legs.length} active={leg.id === active.id && multi} />
+              </div>
+            );
+          })}
         </div>
 
         <SectionHeader>Arrival</SectionHeader>
         <div className="zc-card p-4">
           <div className="flex items-baseline justify-between">
             <div className="disp text-2xl font-extrabold">{fmtTime(arr)}</div>
-            <div className="mono text-xs text-muted">{leg.destination_airport} · {leg.destination_city}</div>
+            <div className="mono text-xs text-muted">{finalLeg.destination_airport} · {finalLeg.destination_city}</div>
           </div>
-          <div className="mt-2 text-sm text-ink2">Scheduled {fmtTime(leg.scheduled_arrival)} {leg.delay_minutes && leg.delay_minutes > 0 ? <>· <b className="text-honey">{leg.delay_minutes} min late</b></> : "· on time"}</div>
-          {leg.scheduled_departure && <div className="mono mt-1 text-xs text-muted">{fmtDateLong(leg.scheduled_departure)}</div>}
+          <div className="mt-2 text-sm text-ink2">Scheduled {fmtTime(finalLeg.scheduled_arrival)} {finalLeg.delay_minutes && finalLeg.delay_minutes > 0 ? <>· <b className="text-honey">{finalLeg.delay_minutes} min late</b></> : "· on time"}</div>
+          {finalLeg.scheduled_arrival && <div className="mono mt-1 text-xs text-muted">{fmtDateLong(finalLeg.scheduled_arrival)}</div>}
         </div>
 
         {weather && (
@@ -80,41 +122,64 @@ export default async function FlightDetail({ params }: { params: Promise<{ id: s
           </>
         )}
 
-        <SectionHeader>Flight</SectionHeader>
-        <div className="zc-card overflow-hidden p-0">
-          <Info k="Departed" v={leg.scheduled_departure ? `${fmtDayShort(leg.scheduled_departure)} ${fmtTime(leg.scheduled_departure)}` : "—"} />
-          <Info k="Terminal" v={leg.terminal_departure ?? "—"} />
-          <Info k="Aircraft" v={leg.aircraft_type ?? "—"} />
-        </div>
-
-        <details className="group mt-4">
-          <summary className="zc-btn zc-btn-ghost w-full cursor-pointer list-none py-2.5 text-sm">More flight details ✈️</summary>
-          <div className="zc-card mt-3 overflow-hidden p-0">
-            <Info k="Registration" v={leg.aircraft_registration ?? "—"} mono />
-            <Info k="Route" v={`${leg.origin_airport}–${leg.destination_airport}`} mono />
-            <Info k="Scheduled dep" v={fmtTime24(leg.scheduled_departure) || "—"} mono />
-            <Info k="Est. arrival" v={fmtTime24(arr) || "—"} mono />
-            <Info k="Progress" v={`${Math.round((leg.progress ?? 0) * 100)}%`} mono />
-          </div>
-          <p className="mt-2 px-1 text-xs text-muted">Aviation data shows when the provider supplies it.</p>
-        </details>
-
         {me.is_admin && (
-          <div className="mt-4 space-y-3">
-            <FlightStatusAdmin travelId={t.id} legId={leg.id} />
-            <FlightEditForm leg={leg} />
-          </div>
+          <>
+            <SectionHeader>Admin · edit flights</SectionHeader>
+            <div className="space-y-4">
+              {legs.map((leg) => (
+                <div key={leg.id} className="space-y-3">
+                  {multi && <div className="mono px-1 text-[11px] font-bold uppercase tracking-wide text-muted">{leg.flight_number} · {leg.origin_airport}→{leg.destination_airport}</div>}
+                  <FlightStatusAdmin travelId={t.id} legId={leg.id} />
+                  <FlightEditForm leg={leg} />
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
     </div>
   );
 }
 
-function Info({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
+/** One segment of the journey, shown as a self-contained card. */
+function ItineraryLeg({ leg, index, total, active }: { leg: FlightLeg; index: number; total: number; active: boolean }) {
+  const meta = flightStatusMeta(leg.status);
+  const dep = leg.estimated_departure ?? leg.scheduled_departure;
+  const arr = leg.estimated_arrival ?? leg.scheduled_arrival;
+  const late = leg.status !== "landed" && (leg.delay_minutes ?? 0) > 0;
+  const tone =
+    meta.tone === "air" ? "text-good" : meta.tone === "land" ? "text-[#5f86a8]" : meta.tone === "cancel" ? "text-berry" : "text-honey";
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-line2 px-4 py-2.5 text-sm last:border-0">
-      <span className="font-bold text-muted">{k}</span>
-      <span className={`font-extrabold ${mono ? "mono" : ""}`}>{v}</span>
+    <div className={`zc-card p-4 ${active ? "border-[1.5px] border-honey" : ""}`}>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <span className="mono rounded-md bg-chip px-1.5 py-0.5 text-[10px] font-bold text-muted">{total > 1 ? `Leg ${index + 1}` : "Flight"}</span>
+          <span className="mono text-[14px] font-semibold">{leg.flight_number}</span>
+          <span className="text-[11px] font-bold uppercase tracking-wide text-muted">{leg.airline_name}</span>
+        </div>
+        <span className={`mono text-[10px] font-semibold uppercase ${active ? "text-good" : tone}`}>{leg.status === "air" ? "In air" : meta.label}{late ? ` · ${leg.delay_minutes}m late` : ""}</span>
+      </div>
+      <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+        <div>
+          <div className="mono text-[22px] font-semibold leading-none">{leg.origin_airport}</div>
+          <div className="mt-1 text-[11px] font-bold text-muted">{leg.origin_city}</div>
+          <div className="mono mt-1 text-[12px] font-semibold">{fmtTime(dep)}</div>
+          <div className="mono text-[10px] text-muted">{fmtDayShort(dep)}</div>
+        </div>
+        <span className="text-lg text-muted" aria-hidden>✈</span>
+        <div className="text-right">
+          <div className="mono text-[22px] font-semibold leading-none">{leg.destination_airport}</div>
+          <div className="mt-1 text-[11px] font-bold text-muted">{leg.destination_city}</div>
+          <div className="mono mt-1 text-[12px] font-semibold">{fmtTime(arr)}</div>
+          <div className="mono text-[10px] text-muted">{fmtDayShort(arr)}</div>
+        </div>
+      </div>
+      {(leg.terminal_departure || leg.aircraft_type) && (
+        <div className="mono mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-line2 pt-2.5 text-[11px] text-muted">
+          {leg.terminal_departure && <span>Terminal {leg.terminal_departure}</span>}
+          {leg.aircraft_type && <span>{leg.aircraft_type}</span>}
+        </div>
+      )}
     </div>
   );
 }

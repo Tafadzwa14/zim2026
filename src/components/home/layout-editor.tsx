@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useAction } from "@/lib/use-action";
 import * as actions from "@/lib/actions";
+import { Spinner } from "@/components/ui";
 import { resolveLayout, type ResolvedWidget, type Surface } from "@/lib/home-layout";
 
 interface Item { id: string; label: string; icon: string; hint?: string; visible: boolean }
@@ -82,7 +83,7 @@ function SurfacePanel({ surface, label, initial }: { surface: Surface; label: st
       </ul>
 
       <div className="mt-3 flex gap-2">
-        <button className="zc-btn flex-1 py-2.5 text-sm" onClick={save} disabled={pending || !dirty}>Save {label.toLowerCase()}</button>
+        <button className="zc-btn flex-1 py-2.5 text-sm" onClick={save} disabled={pending || !dirty}>{pending && <Spinner />}{pending ? "Saving…" : `Save ${label.toLowerCase()}`}</button>
         <button className="zc-btn zc-btn-ghost py-2.5 text-sm" onClick={reset} disabled={pending}>Reset</button>
       </div>
     </div>
