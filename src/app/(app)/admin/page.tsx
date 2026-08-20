@@ -34,8 +34,24 @@ export default async function AdminPage() {
                 <List>
                   {roster.map((u) => <RosterRow key={u.id} u={u} meId={me.id} places={places} />)}
                 </List>
+              </>
+            ),
+          },
+          {
+            key: "unclaimed",
+            label: "Unclaimed",
+            content: (
+              <>
                 <SectionHeader meta={`${roster.length - claimed} pending`}>Not yet claimed</SectionHeader>
                 <NudgeUnclaimed roster={roster} />
+              </>
+            ),
+          },
+          {
+            key: "locations",
+            label: "Locations",
+            content: (
+              <>
                 <SectionHeader>Set locations in bulk</SectionHeader>
                 <BulkLocation roster={roster} places={places} />
               </>
