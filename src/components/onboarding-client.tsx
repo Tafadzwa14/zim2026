@@ -127,6 +127,14 @@ export function OnboardingClient({ isMemory, pending, claimed }: { isMemory: boo
             <label className="zc-label">4-digit PIN</label>
             {pinBox(rPin, setRPin, rPinRefs)}
             <button className="zc-btn mt-5 w-full" disabled={busy || !rUser}>Restore identity</button>
+            <button
+              type="button"
+              disabled={busy || !rUser}
+              onClick={() => run(() => actions.requestPinReset(rUser))}
+              className="mt-3 w-full text-center text-xs font-bold text-muted underline disabled:opacity-50"
+            >
+              Forgot your PIN? Ask an admin to reset it
+            </button>
           </form>
         )}
 

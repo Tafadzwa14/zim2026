@@ -14,6 +14,7 @@ function Row({ t }: { t: TravelView }) {
   if (!leg) return null;
   const meta = flightStatusMeta(leg.status);
   const air = leg.status === "air";
+  const late = leg.status !== "landed" && (leg.delay_minutes ?? 0) > 0;
   return (
     <Link href={`/flights/${t.id}`} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 border-b border-line2 px-4 py-3.5 last:border-0">
       <span className="text-2xl" aria-hidden>{t.members[0]?.emoji ?? "✈️"}</span>
@@ -23,7 +24,7 @@ function Row({ t }: { t: TravelView }) {
       </span>
       <span className="text-right">
         <span className="mono block text-[15px] font-semibold">{leg.status === "scheduled" ? fmtDayShortUpper(t.arrivalIso) : fmtTime(t.arrivalIso)}</span>
-        <span className={`mono block text-[9.5px] font-semibold uppercase ${air ? "text-good" : leg.status === "landed" ? "text-[#5f86a8]" : "text-honey"}`}>{air ? "In air" : meta.label}</span>
+        <span className={`mono block text-[9.5px] font-semibold uppercase ${air ? "text-good" : leg.status === "landed" ? "text-[#5f86a8]" : late ? "text-warn" : "text-honey"}`}>{air ? "In air" : meta.label}{late ? ` · ${leg.delay_minutes}m late` : ""}</span>
       </span>
     </Link>
   );
@@ -40,7 +41,7 @@ function PickupCard({ t, me, users }: { t: TravelView; me: PublicUser; users: Pu
       </div>
       <div className="disp my-2 text-lg font-extrabold">{t.members.map((m) => m.emoji).join(" ")} {t.title}</div>
       {leg && <div className="mono text-[11px] text-muted">{leg.origin_city} → {leg.destination_city}</div>}
-      <div className="mt-3"><PickupControl travelId={t.id} driver={driver} meId={me.id} isAdmin={me.is_admin} big={!driver} /></div>
+      <div className="mt-3"><PickupControl travelId={t.id} driver={driver} meId={me.id} isAdmin={me.is_admin} big={!driver} enRoute={t.pickup?.driver_en_route} /></div>
     </div>
   );
 }

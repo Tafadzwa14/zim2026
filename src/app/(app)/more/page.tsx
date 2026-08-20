@@ -2,27 +2,31 @@ import Link from "next/link";
 import { getRepo } from "@/lib/repo";
 import { getCurrentUser } from "@/lib/identity";
 import { Screen } from "@/components/ui";
+import { InstallPrompt } from "@/components/install-prompt";
 
 export const dynamic = "force-dynamic";
 
 export default async function MorePage() {
   const repo = getRepo();
-  const [me, plans, travel, shopping, tasks] = await Promise.all([
-    getCurrentUser(),
+  const me = await getCurrentUser();
+  const [plans, travel, shopping, tasks, polls] = await Promise.all([
     repo.listPlans(),
     repo.listTravel(),
     repo.listShopping(),
     repo.listTasks(),
+    me ? repo.listPolls(me.id) : Promise.resolve([]),
   ]);
   const openPickups = travel.filter((t) => t.pickup?.requested && !t.pickup.driver_user_id).length;
   const openShopping = shopping.filter((s) => !s.completed).length;
   const openTasks = tasks.filter((t) => !t.completed).length;
+  const openPolls = polls.filter((p) => !p.closed).length;
 
   const items: { href: string; icon: string; label: string; badge?: number }[] = [
     { href: "/calendar?view=plans", icon: "📅", label: "Plans", badge: plans.length },
     { href: "/flights", icon: "🚗", label: "Airport pickups", badge: openPickups },
     { href: "/shopping", icon: "🛒", label: "Shopping", badge: openShopping },
     { href: "/tasks", icon: "✅", label: "Tasks", badge: openTasks },
+    { href: "/polls", icon: "📊", label: "Polls", badge: openPolls },
     { href: "/info", icon: "ℹ️", label: "Important info" },
     { href: "/activity", icon: "🔔", label: "Activity" },
     ...(me?.is_admin ? [{ href: "/admin", icon: "🛡️", label: "Admin" }] : []),
@@ -41,6 +45,7 @@ export default async function MorePage() {
           </Link>
         ))}
       </div>
+      <InstallPrompt />
       <p className="mt-5 text-center text-xs text-muted">Zim 2026 · private family hub</p>
     </Screen>
   );

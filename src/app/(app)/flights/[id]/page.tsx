@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import { getRepo } from "@/lib/repo";
 import { getCurrentUser } from "@/lib/identity";
-import { fmtDateLong, fmtDayShort, fmtTime, fmtTime24, timeAgo } from "@/lib/format";
+import { fmtDateLong, fmtDayShort, fmtTime, fmtTime24, timeAgo, tripDateOf } from "@/lib/format";
+import { getArrivalWeather } from "@/lib/weather";
 import { FlightCard } from "@/components/flight-card";
 import { BackHeader, PersonChip, SectionHeader } from "@/components/ui";
 import { FlightStatusAdmin, PickupControl, RefreshFlight } from "@/components/interactive";
@@ -17,6 +18,7 @@ export default async function FlightDetail({ params }: { params: Promise<{ id: s
   if (!leg) return notFound();
   const driver = t.driver;
   const arr = leg.estimated_arrival ?? leg.scheduled_arrival;
+  const weather = arr ? await getArrivalWeather(leg.destination_city, tripDateOf(arr)) : null;
 
   return (
     <div className="mx-auto max-w-xl px-[18px] lg:max-w-3xl lg:px-8">
@@ -39,6 +41,16 @@ export default async function FlightDetail({ params }: { params: Promise<{ id: s
           {leg.scheduled_departure && <div className="mono mt-1 text-xs text-muted">{fmtDateLong(leg.scheduled_departure)}</div>}
         </div>
 
+        {weather && (
+          <div className="zc-card mt-3 flex items-center gap-3.5 p-4">
+            <span className="text-3xl" aria-hidden>{weather.emoji}</span>
+            <div className="min-w-0 flex-1">
+              <div className="text-[15px] font-extrabold">{weather.city} on arrival day</div>
+              <div className="text-xs font-semibold text-muted">{weather.label} · {weather.min}°–{weather.max}°</div>
+            </div>
+          </div>
+        )}
+
         <SectionHeader meta={String(t.members.length)}>Travelling</SectionHeader>
         <div className="flex flex-wrap gap-2">{t.members.map((m) => <PersonChip key={m.id} user={m} />)}</div>
 
@@ -47,7 +59,7 @@ export default async function FlightDetail({ params }: { params: Promise<{ id: s
             <SectionHeader>Pickup</SectionHeader>
             <div className="zc-card flex items-center gap-2.5 p-4">
               <span className="text-xl" aria-hidden>🚗</span>
-              <PickupControl travelId={t.id} driver={driver} meId={me.id} isAdmin={me.is_admin} big={!driver} />
+              <PickupControl travelId={t.id} driver={driver} meId={me.id} isAdmin={me.is_admin} big={!driver} enRoute={t.pickup?.driver_en_route} />
             </div>
           </>
         )}

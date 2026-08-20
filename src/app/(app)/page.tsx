@@ -7,6 +7,7 @@ import { FlightCard } from "@/components/flight-card";
 import { LiveDot, SectionHeader } from "@/components/ui";
 import { ThemeToggle } from "@/components/providers";
 import { PickupControl, ShoppingItemRow, TaskItemRow } from "@/components/interactive";
+import { Dismissable } from "@/components/dismissable";
 import type { TravelView } from "@/lib/repo/types";
 import type { PublicUser } from "@/lib/types";
 
@@ -154,6 +155,7 @@ function ArrivalRow({ t }: { t: TravelView }) {
   const leg = t.activeLeg;
   if (!leg) return null;
   const air = leg.status === "air";
+  const late = leg.status !== "landed" && (leg.delay_minutes ?? 0) > 0;
   return (
     <Link href={`/flights/${t.id}`} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 border-b border-line2 px-4 py-3.5 last:border-0">
       <span className="text-2xl" aria-hidden>{t.members[0]?.emoji ?? "✈️"}</span>
@@ -163,9 +165,53 @@ function ArrivalRow({ t }: { t: TravelView }) {
       </span>
       <span className="text-right">
         <span className="mono block text-[15px] font-semibold">{leg.status === "scheduled" ? fmtDayShortUpper(t.arrivalIso) : fmtTime(t.arrivalIso)}</span>
-        <span className={`mono block text-[9.5px] font-semibold uppercase ${air ? "text-good" : "text-honey"}`}>{air ? "In air" : leg.status === "landed" ? "Landed" : "Scheduled"}</span>
+        <span className={`mono block text-[9.5px] font-semibold uppercase ${air ? "text-good" : late ? "text-warn" : "text-honey"}`}>{air ? "In air" : leg.status === "landed" ? "Landed" : late ? `${leg.delay_minutes}m late` : "Scheduled"}</span>
       </span>
     </Link>
+  );
+}
+
+interface Nudge { icon: string; text: string; href: string }
+
+/** Things on the home screen that specifically need this viewer to act. */
+function needsMe(d: Dashboard, me: PublicUser): Nudge[] {
+  const out: Nudge[] = [];
+  for (const t of d.travel) {
+    if (t.status === "arrived") continue;
+    const iAmOn = t.members.some((m) => m.id === me.id);
+    if (t.pickup?.requested && !t.pickup.driver_user_id && iAmOn) {
+      out.push({ icon: "🚗", text: "Your flight still needs a driver", href: `/flights/${t.id}` });
+    }
+    if (t.pickup?.driver_user_id === me.id && t.arrivalIso && tripDateOf(t.arrivalIso) === d.today) {
+      out.push({ icon: "🛬", text: `You're picking up ${t.title} today`, href: `/flights/${t.id}` });
+    }
+  }
+  if (me.roles.includes("driver") || me.is_admin) {
+    const open = d.travel.filter(
+      (t) => t.status !== "arrived" && t.pickup?.requested && !t.pickup.driver_user_id && !t.members.some((m) => m.id === me.id),
+    );
+    if (open.length) out.push({ icon: "🚗", text: `${open.length} pickup${open.length > 1 ? "s" : ""} need a driver`, href: "/flights" });
+  }
+  const myTasks = d.tasks.filter((t) => !t.completed && t.assigned_to === me.id);
+  if (myTasks.length) out.push({ icon: "✅", text: myTasks.length === 1 ? `Task: ${myTasks[0].title}` : `${myTasks.length} tasks are on you`, href: "/tasks" });
+  const myShop = d.shopping.filter((s) => !s.completed && s.claimed_by === me.id);
+  if (myShop.length) out.push({ icon: "🛒", text: myShop.length === 1 ? `Buy: ${myShop[0].item}` : `${myShop.length} things to buy`, href: "/shopping" });
+  return out.slice(0, 3);
+}
+
+function NeedsMe({ items, className }: { items: Nudge[]; className?: string }) {
+  if (!items.length) return null;
+  return (
+    <div className={`overflow-hidden rounded-[16px] border border-[color-mix(in_srgb,var(--honey)_35%,transparent)] bg-[color-mix(in_srgb,var(--honey)_10%,var(--card))] ${className ?? ""}`}>
+      <div className="mono px-4 pt-2.5 text-[10px] font-bold uppercase tracking-wide text-honey">Needs you</div>
+      {items.map((n, i) => (
+        <Link key={i} href={n.href} className="flex items-center gap-3 px-4 py-2.5">
+          <span className="text-lg" aria-hidden>{n.icon}</span>
+          <span className="flex-1 text-[14px] font-extrabold leading-tight">{n.text}</span>
+          <span className="text-muted" aria-hidden>›</span>
+        </Link>
+      ))}
+    </div>
   );
 }
 
@@ -222,6 +268,7 @@ export default async function HomePage() {
   const [d, me] = await Promise.all([getDashboard(), getCurrentUser()]);
   if (!me) return null;
   const active = d.active[0]?.activeLeg ? d.active[0] : null;
+  const nudges = needsMe(d, me);
 
   // command-centre event rows
   const todayPlans = d.plans.filter((p) => p.date === d.today);
@@ -247,6 +294,7 @@ export default async function HomePage() {
         </header>
         <div className="disp mt-0.5 text-lg font-bold">The crew is assembling ✈️</div>
         <MyBanner d={d} me={me} />
+        <NeedsMe items={nudges} className="mt-3" />
 
         <div className="md:columns-2 md:gap-x-5">
           {active && (
@@ -291,20 +339,24 @@ export default async function HomePage() {
           {d.dinner && (
             <section className="break-inside-avoid">
               <SectionHeader>Tonight</SectionHeader>
-              <Link href={`/plans/${d.dinner.id}`} className="flex items-center gap-3.5 rounded-[22px] p-[17px] text-white shadow-[0_14px_26px_-18px_rgba(30,45,70,.6)]" style={{ background: "var(--grad-dinner)" }}>
-                <span className="text-3xl" aria-hidden>🍲</span>
-                <span><span className="disp block text-[17px] font-extrabold">{d.dinner.title}</span><span className="block text-[12.5px] font-bold opacity-90">{d.dinner.location}</span></span>
-                <span className="mono ml-auto text-[15px] font-semibold">{fmtTime(`${d.dinner.date}T${d.dinner.start_time}:00+02:00`)}</span>
-              </Link>
+              <Dismissable id={`dinner-${d.dinner.id}`}>
+                <Link href={`/plans/${d.dinner.id}`} className="flex items-center gap-3.5 rounded-[22px] p-[17px] text-white shadow-[0_14px_26px_-18px_rgba(30,45,70,.6)]" style={{ background: "var(--grad-dinner)" }}>
+                  <span className="text-3xl" aria-hidden>🍲</span>
+                  <span><span className="disp block text-[17px] font-extrabold">{d.dinner.title}</span><span className="block text-[12.5px] font-bold opacity-90">{d.dinner.location}</span></span>
+                  <span className="mono ml-auto mr-7 text-[15px] font-semibold">{fmtTime(`${d.dinner.date}T${d.dinner.start_time}:00+02:00`)}</span>
+                </Link>
+              </Dismissable>
             </section>
           )}
 
           {d.pinned && (
             <section className="break-inside-avoid pt-6">
-              <div className="flex items-center gap-3 rounded-[18px] border border-[color-mix(in_srgb,var(--warn)_38%,transparent)] bg-[color-mix(in_srgb,var(--warn)_12%,var(--card))] px-4 py-3.5">
-                <span className="text-xl" aria-hidden>📢</span>
-                <div><div className="mono text-[10px] font-semibold uppercase tracking-wide text-warn">Pinned notice</div><div className="mt-0.5 text-[15px] font-extrabold text-ink">{d.pinned.title}</div></div>
-              </div>
+              <Dismissable id={`pinned-${d.pinned.id}`}>
+                <div className="flex items-center gap-3 rounded-[18px] border border-[color-mix(in_srgb,var(--warn)_38%,transparent)] bg-[color-mix(in_srgb,var(--warn)_12%,var(--card))] px-4 py-3.5 pr-10">
+                  <span className="text-xl" aria-hidden>📢</span>
+                  <div><div className="mono text-[10px] font-semibold uppercase tracking-wide text-warn">Pinned notice</div><div className="mt-0.5 text-[15px] font-extrabold text-ink">{d.pinned.title}</div></div>
+                </div>
+              </Dismissable>
             </section>
           )}
         </div>
@@ -337,6 +389,8 @@ export default async function HomePage() {
               </Link>
             </div>
           </div>
+
+          <NeedsMe items={nudges} className="mb-[18px]" />
 
           <div className="grid grid-cols-[1.12fr_0.88fr] items-start gap-[18px]">
             <div className="flex flex-col gap-[18px]">
@@ -374,7 +428,7 @@ export default async function HomePage() {
                         <div className="text-sm font-extrabold">{t.members.map((m) => m.emoji).join(" ")} {t.title}</div>
                         <div className="mono text-[10.5px] text-muted">{fmtDayShortUpper(t.arrivalIso)} · {t.activeLeg?.flight_number}</div>
                       </div>
-                      <PickupControl travelId={t.id} driver={t.pickup?.driver_user_id ? t.members.find((m) => m.id === t.pickup?.driver_user_id) ?? d.users.find((u) => u.id === t.pickup?.driver_user_id) ?? null : null} meId={me.id} isAdmin={me.is_admin} />
+                      <PickupControl travelId={t.id} driver={t.pickup?.driver_user_id ? t.members.find((m) => m.id === t.pickup?.driver_user_id) ?? d.users.find((u) => u.id === t.pickup?.driver_user_id) ?? null : null} meId={me.id} isAdmin={me.is_admin} enRoute={t.pickup?.driver_en_route} />
                     </div>
                   ))
                 ) : <PanelEmpty emoji="🚗" text="No pickups needed" />}

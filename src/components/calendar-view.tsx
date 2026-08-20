@@ -326,8 +326,9 @@ function PlanGrid({ plans, meId }: { plans: PlanView[]; meId: string }) {
               </div>
             </Link>
             <div className="mt-3 flex items-center gap-1.5">
-              {p.attendees.slice(0, 6).map((a) => <span key={a.id} className="text-lg" aria-hidden>{a.emoji}</span>)}
-              {p.attendees.length > 6 && <span className="mono text-[11px] text-muted">+{p.attendees.length - 6}</span>}
+              <span className="mono mr-1 text-[11px] font-bold text-muted">{p.attendees.length} going</span>
+              {p.attendees.slice(0, 5).map((a) => <span key={a.id} className="text-lg" aria-hidden>{a.emoji}</span>)}
+              {p.attendees.length > 5 && <span className="mono text-[11px] text-muted">+{p.attendees.length - 5}</span>}
               {p.anyone_can_join && <PlanJoinButton planId={p.id} going={going} className="ml-auto" />}
             </div>
           </div>

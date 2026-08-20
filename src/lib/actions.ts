@@ -62,6 +62,15 @@ export async function claimIdentity(input: unknown): Promise<ActionResult> {
   return ok({}, `Welcome, ${user.name}!`);
 }
 
+export async function requestPinReset(username: string): Promise<ActionResult> {
+  const uname = (username || "").trim();
+  if (!uname) return fail("Pick your name first");
+  const found = await getRepo().requestPinReset(uname);
+  if (!found) return fail("We couldn't find that name");
+  refresh();
+  return ok({}, "Asked an admin to reset your PIN — they'll sort it soon.");
+}
+
 export async function reclaimIdentity(input: unknown): Promise<ActionResult> {
   const schema = z.object({ username: z.string().trim().toLowerCase(), pin: z.string().regex(/^\d{4}$/) });
   const parsed = schema.safeParse(input);
@@ -343,6 +352,18 @@ export async function releasePickup(travelGroupId: string): Promise<ActionResult
   refresh();
   return ok({}, isDriver ? "Pickup released" : "Pickup reopened");
 }
+export async function setPickupEnRoute(travelGroupId: string, enRoute: boolean): Promise<ActionResult> {
+  const me = await requireUser();
+  const repo = getRepo();
+  const tg = await repo.getTravel(travelGroupId);
+  if (!tg?.pickup?.requested) return fail("No pickup to update");
+  const isDriver = tg.pickup.driver_user_id === me.id;
+  if (!isDriver && !me.is_admin) return fail("Only the assigned driver can do this");
+  await repo.setPickupEnRoute(travelGroupId, enRoute);
+  if (enRoute) await repo.addActivity(me.id, "pickup_claimed", `is on the way to collect ${tg.title}`, { type: "travel", id: travelGroupId });
+  refresh();
+  return ok({}, enRoute ? "On your way 🚗" : "Marked as not left yet");
+}
 
 // ============================ shopping ============================
 export async function addShopping(input: { item: string; quantity: number; category: string; assignTo?: string | null }): Promise<ActionResult> {
@@ -433,12 +454,12 @@ export async function toggleTask(id: string, done: boolean): Promise<ActionResul
 }
 
 // ============================ admin ============================
-export async function addAnnouncement(input: { title: string; content?: string | null; is_pinned: boolean }): Promise<ActionResult> {
+export async function addAnnouncement(input: { title: string; content?: string | null; is_pinned: boolean; expires_at?: string | null }): Promise<ActionResult> {
   const me = await requireAdmin();
   const title = input.title?.trim();
   if (!title) return fail("Add a title");
   const repo = getRepo();
-  await repo.addAnnouncement({ title, content: input.content ?? null, is_pinned: input.is_pinned, created_by: me.id });
+  await repo.addAnnouncement({ title, content: input.content ?? null, is_pinned: input.is_pinned, expires_at: input.expires_at ?? null, created_by: me.id });
   await repo.addActivity(me.id, "announcement_added", "posted an announcement");
   refresh();
   return ok({}, "Announcement posted");
@@ -581,6 +602,46 @@ export async function adminUpdateLeg(legId: string, patch: unknown): Promise<Act
   await getRepo().syncLeg(legId, clean as Partial<import("@/lib/types").FlightLeg>);
   refresh();
   return ok({}, "Flight updated");
+}
+
+// ============================ polls ============================
+export async function createPoll(input: { question: string; options: string[] }): Promise<ActionResult<{ id: string }>> {
+  const me = await requireUser();
+  const question = input.question?.trim();
+  const options = [...new Set((input.options ?? []).map((o) => o.trim()).filter(Boolean))];
+  if (!question) return fail("Add a question");
+  if (options.length < 2) return fail("Add at least two options");
+  const repo = getRepo();
+  const poll = await repo.createPoll({ question, options, created_by: me.id });
+  await repo.addActivity(me.id, "poll_created", `started a poll: ${question}`, { type: "poll", id: poll.id });
+  refresh();
+  return ok({ id: poll.id }, "Poll posted");
+}
+export async function votePoll(pollId: string, optionId: string): Promise<ActionResult> {
+  const me = await requireUser();
+  await getRepo().votePoll(pollId, optionId, me.id);
+  refresh();
+  return ok({}, "Vote counted");
+}
+export async function setPollClosed(pollId: string, closed: boolean): Promise<ActionResult> {
+  const me = await requireUser();
+  const repo = getRepo();
+  const poll = (await repo.listPolls(me.id)).find((p) => p.id === pollId);
+  if (!poll) return fail("Poll not found");
+  if (poll.created_by !== me.id && !me.is_admin) return fail("Only the creator or an admin can do this");
+  await repo.setPollClosed(pollId, closed);
+  refresh();
+  return ok({}, closed ? "Poll closed" : "Poll reopened");
+}
+export async function deletePoll(pollId: string): Promise<ActionResult> {
+  const me = await requireUser();
+  const repo = getRepo();
+  const poll = (await repo.listPolls(me.id)).find((p) => p.id === pollId);
+  if (!poll) return fail("Poll not found");
+  if (poll.created_by !== me.id && !me.is_admin) return fail("Only the creator or an admin can delete this");
+  await repo.deletePoll(pollId);
+  refresh();
+  return ok({}, "Poll deleted");
 }
 
 export async function whoAmI() {

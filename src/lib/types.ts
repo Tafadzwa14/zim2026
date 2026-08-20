@@ -31,6 +31,8 @@ export interface User {
   status: LocationStatus;
   roles: string[];
   staying_at: string | null;
+  /** Set when the person asks an admin to reset their PIN; cleared on reset. */
+  pin_reset_requested: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -123,6 +125,8 @@ export interface Pickup {
   flight_leg_id: string | null;
   requested: boolean;
   driver_user_id: string | null;
+  /** Driver has set off for the airport. */
+  driver_en_route: boolean;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -217,6 +221,30 @@ export interface Activity {
   entity_type: string | null;
   entity_id: string | null;
   metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface Poll {
+  id: string;
+  question: string;
+  closed: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PollOption {
+  id: string;
+  poll_id: string;
+  label: string;
+  sort_order: number;
+}
+
+export interface PollVote {
+  id: string;
+  poll_id: string;
+  option_id: string;
+  user_id: string;
   created_at: string;
 }
 

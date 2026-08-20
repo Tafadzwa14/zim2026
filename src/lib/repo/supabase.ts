@@ -12,6 +12,9 @@ import type {
   Pickup,
   Place,
   Plan,
+  Poll,
+  PollOption,
+  PollVote,
   PublicUser,
   ShoppingItem,
   Task,
@@ -25,11 +28,13 @@ import type {
   NewInfoInput,
   NewPlaceInput,
   NewPlanInput,
+  NewPollInput,
   NewShoppingInput,
   NewTaskInput,
   NewTravelInput,
   NewUserInput,
   PlanView,
+  PollView,
   Repo,
   RosterUser,
   ShoppingView,
@@ -37,7 +42,7 @@ import type {
   TravelView,
 } from "./types";
 
-const USER_COLS = "id,name,username,emoji,is_admin,status,roles,staying_at,created_at,updated_at";
+const USER_COLS = "id,name,username,emoji,is_admin,status,roles,staying_at,pin_reset_requested,created_at,updated_at";
 
 class SupabaseRepo implements Repo {
   readonly kind = "supabase" as const;
@@ -110,7 +115,11 @@ class SupabaseRepo implements Repo {
     }));
   }
   async resetUserPin(id: string) {
-    await this.sb.from("users").update({ pin_hash: PENDING_PIN }).eq("id", id);
+    await this.sb.from("users").update({ pin_hash: PENDING_PIN, pin_reset_requested: false }).eq("id", id);
+  }
+  async requestPinReset(username: string) {
+    const { data } = await this.sb.from("users").update({ pin_reset_requested: true }).ilike("username", username).select("id");
+    return Boolean(data && data.length);
   }
   async setUserRoles(id: string, roles: string[]) {
     await this.sb.from("users").update({ roles }).eq("id", id);
@@ -269,7 +278,10 @@ class SupabaseRepo implements Repo {
     return { ok: false, claimedBy: (cur as { driver_user_id: string | null } | null)?.driver_user_id ?? null };
   }
   async releasePickup(travelGroupId: string) {
-    await this.sb.from("pickups").update({ driver_user_id: null }).eq("travel_group_id", travelGroupId);
+    await this.sb.from("pickups").update({ driver_user_id: null, driver_en_route: false }).eq("travel_group_id", travelGroupId);
+  }
+  async setPickupEnRoute(travelGroupId: string, enRoute: boolean) {
+    await this.sb.from("pickups").update({ driver_en_route: enRoute }).eq("travel_group_id", travelGroupId);
   }
 
   async listShopping(): Promise<ShoppingView[]> {
@@ -364,7 +376,7 @@ class SupabaseRepo implements Repo {
   }
   async addAnnouncement(input: NewAnnouncementInput) {
     if (input.is_pinned) await this.sb.from("announcements").update({ is_pinned: false }).eq("is_pinned", true);
-    await this.sb.from("announcements").insert({ title: input.title, content: input.content ?? null, is_pinned: input.is_pinned, created_by: input.created_by });
+    await this.sb.from("announcements").insert({ title: input.title, content: input.content ?? null, is_pinned: input.is_pinned, expires_at: input.expires_at ?? null, created_by: input.created_by });
   }
   async setAnnouncementPinned(id: string, pinned: boolean) {
     if (pinned) await this.sb.from("announcements").update({ is_pinned: false }).eq("is_pinned", true);
@@ -379,6 +391,45 @@ class SupabaseRepo implements Repo {
   }
   async addActivity(actorId: string, type: string, text: string, entity?: { type: string; id: string }) {
     await this.sb.from("activity").insert({ actor_user_id: actorId, type, entity_type: entity?.type ?? null, entity_id: entity?.id ?? null, metadata: { text } });
+  }
+
+  async listPolls(userId: string): Promise<PollView[]> {
+    const [{ data: polls }, { data: options }, { data: votes }, users] = await Promise.all([
+      this.sb.from("polls").select("*").order("closed").order("created_at", { ascending: false }),
+      this.sb.from("poll_options").select("*").order("sort_order"),
+      this.sb.from("poll_votes").select("poll_id,option_id,user_id"),
+      this.userMap(),
+    ]);
+    const opts = (options ?? []) as PollOption[];
+    const vts = (votes ?? []) as Pick<PollVote, "poll_id" | "option_id" | "user_id">[];
+    return ((polls ?? []) as Poll[]).map((p) => {
+      const myVote = vts.find((v) => v.poll_id === p.id && v.user_id === userId) ?? null;
+      const pollVotes = vts.filter((v) => v.poll_id === p.id);
+      return {
+        ...p,
+        options: opts.filter((o) => o.poll_id === p.id).map((o) => ({ ...o, votes: pollVotes.filter((v) => v.option_id === o.id).length })),
+        total: pollVotes.length,
+        myOptionId: myVote?.option_id ?? null,
+        creator: p.created_by ? users.get(p.created_by) ?? null : null,
+      };
+    });
+  }
+  async createPoll(input: NewPollInput): Promise<PollView> {
+    const { data: p, error } = await this.sb.from("polls").insert({ question: input.question, created_by: input.created_by }).select("*").single();
+    if (error) throw error;
+    const poll = p as Poll;
+    const rows = input.options.map((label, i) => ({ poll_id: poll.id, label, sort_order: i }));
+    if (rows.length) await this.sb.from("poll_options").insert(rows);
+    return (await this.listPolls(input.created_by)).find((x) => x.id === poll.id)!;
+  }
+  async votePoll(pollId: string, optionId: string, userId: string) {
+    await this.sb.from("poll_votes").upsert({ poll_id: pollId, option_id: optionId, user_id: userId }, { onConflict: "poll_id,user_id" });
+  }
+  async setPollClosed(id: string, closed: boolean) {
+    await this.sb.from("polls").update({ closed }).eq("id", id);
+  }
+  async deletePoll(id: string) {
+    await this.sb.from("polls").delete().eq("id", id);
   }
 }
 
