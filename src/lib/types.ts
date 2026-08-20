@@ -29,9 +29,20 @@ export interface User {
   pin_hash: string;
   is_admin: boolean;
   status: LocationStatus;
+  roles: string[];
+  staying_at: string | null;
   created_at: string;
   updated_at: string;
 }
+
+/** Known role slugs. 'driver' gates who can take airport pickups. */
+export type Role = "driver" | "cook" | "host" | "coordinator";
+export const ROLES: { slug: Role; label: string; emoji: string }[] = [
+  { slug: "driver", label: "Driver", emoji: "🚗" },
+  { slug: "cook", label: "Cook", emoji: "🍲" },
+  { slug: "host", label: "Host", emoji: "🏠" },
+  { slug: "coordinator", label: "Coordinator", emoji: "📋" },
+];
 
 /** Public projection of a user — never includes pin_hash. */
 export type PublicUser = Omit<User, "pin_hash">;
@@ -151,6 +162,17 @@ export interface ImportantInfo {
   sort_order: number;
   created_by: string | null;
   updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Place {
+  id: string;
+  name: string;
+  address: string | null;
+  notes: string | null;
+  sort_order: number;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -8,12 +8,11 @@ import { useAction } from "@/lib/use-action";
 import * as actions from "@/lib/actions";
 import type { PublicUser } from "@/lib/types";
 
-export function OnboardingClient({ isMemory, users }: { isMemory: boolean; users: PublicUser[] }) {
+export function OnboardingClient({ isMemory, pending }: { isMemory: boolean; pending: PublicUser[] }) {
   const router = useRouter();
-  const { run, pending } = useAction();
-  const [mode, setMode] = useState<"create" | "reclaim">("create");
-  const [name, setName] = useState("");
-  const [username, setUsername] = useState("");
+  const { run, pending: busy } = useAction();
+  const [mode, setMode] = useState<"claim" | "reclaim">("claim");
+  const [userId, setUserId] = useState("");
   const [emoji, setEmoji] = useState("🏎️");
   const [search, setSearch] = useState("");
   const [pin, setPin] = useState(["", "", "", ""]);
@@ -27,6 +26,8 @@ export function OnboardingClient({ isMemory, users }: { isMemory: boolean; users
     const list = EMOJIS.filter(([e, kw]) => !q || kw.includes(q) || e === q);
     return list.length ? list : EMOJIS;
   }, [search]);
+
+  const chosen = pending.find((u) => u.id === userId) ?? null;
 
   function pinBox(values: string[], setValues: (v: string[]) => void, refs: React.RefObject<(HTMLInputElement | null)[]>) {
     return (
@@ -64,53 +65,65 @@ export function OnboardingClient({ isMemory, users }: { isMemory: boolean; users
 
       <div className="mx-auto max-w-[480px] p-[22px_26px_44px]">
         <div className="mb-4 flex gap-1.5 rounded-2xl bg-chip p-1">
-          {(["create", "reclaim"] as const).map((m) => (
+          {(["claim", "reclaim"] as const).map((m) => (
             <button key={m} onClick={() => setMode(m)} className={cn("flex-1 rounded-xl py-2 text-[13px] font-extrabold", mode === m ? "bg-card text-ink shadow-sm" : "text-ink2")}>
-              {m === "create" ? "I'm new" : "Reclaim identity"}
+              {m === "claim" ? "I'm new" : "Reclaim identity"}
             </button>
           ))}
         </div>
 
-        {mode === "create" ? (
-          <form onSubmit={(e) => { e.preventDefault(); run(() => actions.createIdentity({ name, username, emoji, pin: pin.join("") }), { onSuccess: () => router.push("/") }); }}>
-            <label className="zc-label">Your name</label>
-            <input className="zc-input" placeholder="e.g. Taffie" value={name} onChange={(e) => setName(e.target.value)} />
-            <label className="zc-label">Pick a username</label>
-            <input className="zc-input" placeholder="e.g. taffie" value={username} onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))} />
-            <label className="zc-label">Choose your emoji — <span className="text-lg">{emoji}</span></label>
-            <input className="zc-input" placeholder="Search emoji (lion, flower, car…)" value={search} onChange={(e) => setSearch(e.target.value)} />
-            <div className="mt-2 grid max-h-44 grid-cols-7 gap-1 overflow-y-auto">
-              {grid.map(([e]) => (
-                <button type="button" key={e} onClick={() => setEmoji(e)} className={cn("rounded-lg py-1.5 text-2xl", e === emoji && "bg-[#fbecd8] dark:bg-[color-mix(in_srgb,var(--honey)_22%,transparent)]")}>{e}</button>
-              ))}
+        {mode === "claim" ? (
+          pending.length === 0 ? (
+            <div className="zc-card text-center">
+              <p className="font-bold text-ink">No one to set up yet</p>
+              <p className="mt-1.5 text-sm text-muted">Ask whoever set up the app to add you to the family list, then come back here to choose your emoji and PIN.</p>
             </div>
-            <label className="zc-label">Set a 4-digit PIN</label>
-            {pinBox(pin, setPin, pinRefs)}
-            <p className="text-xs text-muted">Your PIN lets you reclaim your identity on another device. Stored hashed, never in plain text.</p>
-            <button className="zc-btn mt-5 w-full" disabled={pending}>Enter Zim 2026 →</button>
-          </form>
+          ) : (
+            <form onSubmit={(e) => { e.preventDefault(); run(() => actions.claimIdentity({ userId, emoji, pin: pin.join("") }), { onSuccess: () => router.push("/") }); }}>
+              <label className="zc-label">Who are you?</label>
+              <select
+                className="zc-input"
+                value={userId}
+                onChange={(e) => {
+                  setUserId(e.target.value);
+                  const u = pending.find((p) => p.id === e.target.value);
+                  if (u) setEmoji(u.emoji);
+                }}
+              >
+                <option value="" disabled>Pick your name…</option>
+                {pending.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
+                ))}
+              </select>
+
+              <label className="zc-label">Choose your emoji — <span className="text-lg">{emoji}</span></label>
+              <input className="zc-input" placeholder="Search emoji (lion, flower, car…)" value={search} onChange={(e) => setSearch(e.target.value)} />
+              <div className="mt-2 grid max-h-44 grid-cols-7 gap-1 overflow-y-auto">
+                {grid.map(([e]) => (
+                  <button type="button" key={e} onClick={() => setEmoji(e)} className={cn("rounded-lg py-1.5 text-2xl", e === emoji && "bg-[#fbecd8] dark:bg-[color-mix(in_srgb,var(--honey)_22%,transparent)]")}>{e}</button>
+                ))}
+              </div>
+
+              <label className="zc-label">Set a 4-digit PIN</label>
+              {pinBox(pin, setPin, pinRefs)}
+              <p className="text-xs text-muted">Your PIN lets you reclaim your identity on another device. Stored hashed, never in plain text.</p>
+              <button className="zc-btn mt-5 w-full" disabled={busy || !chosen}>Enter Zim 2026 →</button>
+            </form>
+          )
         ) : (
           <form onSubmit={(e) => { e.preventDefault(); run(() => actions.reclaimIdentity({ username: rUser, pin: rPin.join("") }), { onSuccess: () => router.push("/") }); }}>
             <label className="zc-label">Username</label>
             <input className="zc-input" placeholder="your username" value={rUser} onChange={(e) => setRUser(e.target.value.toLowerCase())} />
             <label className="zc-label">4-digit PIN</label>
             {pinBox(rPin, setRPin, rPinRefs)}
-            <button className="zc-btn mt-5 w-full" disabled={pending}>Restore identity</button>
+            <button className="zc-btn mt-5 w-full" disabled={busy}>Restore identity</button>
           </form>
         )}
 
         {isMemory && (
-          <div className="mt-8 border-t border-line pt-5">
-            <div className="zc-label">Demo mode · continue as</div>
-            <p className="-mt-1 mb-2 text-xs text-muted">No Supabase connected yet. Pick a seeded family member to explore.</p>
-            <div className="flex flex-wrap gap-2">
-              {users.map((u) => (
-                <button key={u.id} onClick={() => run(() => actions.switchUser(u.id), { onSuccess: () => router.push("/") })} className="zc-chip">
-                  <span className="text-lg" aria-hidden>{u.emoji}</span>{u.name}
-                </button>
-              ))}
-            </div>
-          </div>
+          <p className="mt-8 border-t border-line pt-5 text-xs text-muted">
+            Demo mode — no Supabase connected. The list above is seeded family; claiming one lets you explore as them.
+          </p>
         )}
       </div>
     </div>

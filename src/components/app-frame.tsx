@@ -8,21 +8,15 @@ import { ThemeToggle } from "@/components/providers";
 import { Sheet } from "@/components/sheet";
 import { Realtime } from "@/components/realtime";
 import { AnnouncementForm, PlanForm, ShoppingForm, TaskForm, TravelForm } from "@/components/forms";
-import type { PublicUser } from "@/lib/types";
+import type { Place, PublicUser } from "@/lib/types";
 
 type SheetKind = "menu" | "plan" | "travel" | "shopping" | "task" | "ann" | null;
 
-const BOTTOM = [
-  { href: "/", icon: "🏠", label: "Home" },
-  { href: "/calendar", icon: "📅", label: "Calendar" },
-  { href: "/flights", icon: "✈️", label: "Flights" },
-  { href: "/family", icon: "👥", label: "Family" },
-  { href: "/more", icon: "☰", label: "More" },
-];
 
 export function AppFrame({
   user,
   users,
+  places,
   appTitle,
   isMemory,
   counts,
@@ -30,6 +24,7 @@ export function AppFrame({
 }: {
   user: PublicUser;
   users: PublicUser[];
+  places: Place[];
   appTitle: string;
   isMemory: boolean;
   counts: { pickups: number; shopping: number; tasks: number };
@@ -39,11 +34,22 @@ export function AppFrame({
   const [sheet, setSheet] = useState<SheetKind>(null);
   const active = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
 
+  // Family is admin-only; non-admins get Info in that bottom-nav slot instead.
+  const bottomNav = [
+    { href: "/", icon: "🏠", label: "Home" },
+    { href: "/calendar", icon: "📅", label: "Calendar" },
+    { href: "/flights", icon: "✈️", label: "Flights" },
+    user.is_admin
+      ? { href: "/family", icon: "👥", label: "Family" }
+      : { href: "/info", icon: "ℹ️", label: "Info" },
+    { href: "/more", icon: "☰", label: "More" },
+  ];
+
   const sideNav = [
     { href: "/", icon: "🏠", label: "Command centre" },
     { href: "/calendar", icon: "📅", label: "Calendar" },
     { href: "/flights", icon: "✈️", label: "Flights" },
-    { href: "/family", icon: "👥", label: "Family" },
+    ...(user.is_admin ? [{ href: "/family", icon: "👥", label: "Family" }] : []),
     { href: "/plans", icon: "📋", label: "Plans" },
     { href: "/pickups", icon: "🚗", label: "Pickups", badge: counts.pickups },
     { href: "/shopping", icon: "🛒", label: "Shopping", badge: counts.shopping },
@@ -110,7 +116,7 @@ export function AppFrame({
 
       {/* mobile bottom nav */}
       <nav className="fixed inset-x-0 bottom-0 z-30 flex items-center justify-around border-t border-line bg-card px-1 pb-[max(10px,env(safe-area-inset-bottom))] pt-2 lg:hidden">
-        {BOTTOM.map((n) => (
+        {bottomNav.map((n) => (
           <Link key={n.href} href={n.href} className={cn("flex flex-1 flex-col items-center gap-0.5 px-1.5 py-0.5 text-[10px] font-extrabold", active(n.href) ? "text-honey" : "text-[#bcae9c]")}>
             <span className="text-xl leading-none" aria-hidden>{n.icon}</span>
             {n.label}
@@ -136,7 +142,7 @@ export function AppFrame({
           ))}
         </div>
       </Sheet>
-      <Sheet open={sheet === "plan"} onClose={close} title="New plan"><PlanForm me={user} users={users} onDone={close} /></Sheet>
+      <Sheet open={sheet === "plan"} onClose={close} title="New plan"><PlanForm me={user} users={users} places={places} onDone={close} /></Sheet>
       <Sheet open={sheet === "travel"} onClose={close} title="Add travel"><TravelForm me={user} users={users} onDone={close} /></Sheet>
       <Sheet open={sheet === "shopping"} onClose={close} title="Add shopping item"><ShoppingForm onDone={close} /></Sheet>
       <Sheet open={sheet === "task"} onClose={close} title="Add task"><TaskForm onDone={close} /></Sheet>

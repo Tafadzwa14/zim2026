@@ -12,6 +12,16 @@ function secret(): string {
   return serverEnv.pinPepper || "zim-dev-secret-change-me";
 }
 
+// Sentinel pin_hash for admin-provisioned identities not yet claimed by a
+// person. It has no ":" separator, so verifyPin() always rejects it — a pending
+// identity can't be logged into until claimed (emoji + real PIN set).
+export const PENDING_PIN = "PENDING";
+
+/** True once a real PIN has been set (hashPin output is "salt:hash"). */
+export function isClaimed(pinHash: string): boolean {
+  return pinHash.includes(":");
+}
+
 // ---- PIN hashing (scrypt; never store plaintext, spec section 49) ----
 export function hashPin(pin: string): string {
   const salt = crypto.randomBytes(16).toString("hex");

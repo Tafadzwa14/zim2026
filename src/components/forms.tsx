@@ -8,13 +8,14 @@ import { useAction } from "@/lib/use-action";
 import * as actions from "@/lib/actions";
 import type { NewLegInput } from "@/lib/repo/types";
 import type { FlightSearchResult } from "@/lib/flights";
-import type { PlanCategory, PublicUser } from "@/lib/types";
+import type { Place, PlanCategory, PublicUser } from "@/lib/types";
 
 const todayInput = () => new Date().toLocaleDateString("en-CA");
 
 interface FormProps {
   me: PublicUser;
   users: PublicUser[];
+  places?: Place[];
   onDone: () => void;
 }
 
@@ -63,7 +64,7 @@ function PeoplePicker({ users, value, onChange, lock }: { users: PublicUser[]; v
   );
 }
 
-export function PlanForm({ me, users, onDone }: FormProps) {
+export function PlanForm({ me, users, places = [], onDone }: FormProps) {
   const { run, pending } = useAction();
   const [category, setCategory] = useState<PlanCategory>("family");
   const [attendees, setAttendees] = useState<string[]>([me.id]);
@@ -90,7 +91,8 @@ export function PlanForm({ me, users, onDone }: FormProps) {
         </div>
       </div>
       <label className="zc-label">Location (optional)</label>
-      <input className="zc-input" placeholder="Where?" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
+      <input className="zc-input" list="plan-places" placeholder="Where?" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
+      {places.length > 0 && <datalist id="plan-places">{places.map((p) => <option key={p.id} value={p.name} />)}</datalist>}
       <label className="zc-label">Category</label>
       <div className="flex flex-wrap gap-2">
         {CATEGORIES.map((c) => (

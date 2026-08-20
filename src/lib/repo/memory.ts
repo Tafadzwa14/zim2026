@@ -6,6 +6,7 @@ import type {
   FlightStatus,
   ImportantInfo,
   Pickup,
+  Place,
   Plan,
   PlanAttendee,
   PublicUser,
@@ -20,6 +21,8 @@ import type {
   ClaimResult,
   InfoGroup,
   NewAnnouncementInput,
+  NewInfoInput,
+  NewPlaceInput,
   NewPlanInput,
   NewShoppingInput,
   NewTaskInput,
@@ -27,6 +30,7 @@ import type {
   NewUserInput,
   PlanView,
   Repo,
+  RosterUser,
   ShoppingView,
   TaskView,
   TravelView,
@@ -97,10 +101,58 @@ class MemoryRepo implements Repo {
     const u: User = {
       id: uid(), name: input.name, username: input.username, emoji: input.emoji,
       pin_hash: input.pinHash, is_admin: input.is_admin ?? false, status: input.status ?? "here",
+      roles: [], staying_at: null,
       created_at: nowIso(), updated_at: nowIso(),
     };
     this.d.users.push(u);
     return toPublic(u);
+  }
+  async listPending() {
+    return this.d.users.filter((u) => !u.pin_hash.includes(":")).map(toPublic).sort((a, b) => a.name.localeCompare(b.name));
+  }
+  async claimUser(id: string, patch: { emoji: string; pinHash: string }) {
+    const u = this.d.users.find((x) => x.id === id);
+    if (!u || u.pin_hash.includes(":")) return null;
+    u.emoji = patch.emoji; u.pin_hash = patch.pinHash; u.updated_at = nowIso();
+    return toPublic(u);
+  }
+  async listRoster(): Promise<RosterUser[]> {
+    return this.d.users
+      .map((u) => ({ ...toPublic(u), claimed: u.pin_hash.includes(":") }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+  async resetUserPin(id: string) {
+    const u = this.d.users.find((x) => x.id === id);
+    if (u) { u.pin_hash = "PENDING"; u.updated_at = nowIso(); }
+  }
+  async setUserRoles(id: string, roles: string[]) {
+    const u = this.d.users.find((x) => x.id === id);
+    if (u) { u.roles = roles; u.updated_at = nowIso(); }
+  }
+  async setUserLocation(id: string, stayingAt: string | null) {
+    const u = this.d.users.find((x) => x.id === id);
+    if (u) { u.staying_at = stayingAt; u.updated_at = nowIso(); }
+  }
+  async deleteUser(id: string) {
+    this.d.users = this.d.users.filter((u) => u.id !== id);
+  }
+  async listPlaces() {
+    return [...this.d.places].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
+  }
+  async createPlace(input: NewPlaceInput) {
+    const p: Place = {
+      id: uid(), name: input.name, address: input.address ?? null, notes: input.notes ?? null,
+      sort_order: this.d.places.length, created_by: input.created_by, created_at: nowIso(), updated_at: nowIso(),
+    };
+    this.d.places.push(p);
+    return p;
+  }
+  async updatePlace(id: string, patch: Partial<Pick<Place, "name" | "address" | "notes" | "sort_order">>) {
+    const p = this.d.places.find((x) => x.id === id);
+    if (p) { Object.assign(p, patch); p.updated_at = nowIso(); }
+  }
+  async deletePlace(id: string) {
+    this.d.places = this.d.places.filter((p) => p.id !== id);
   }
   async setAdmin(id: string, isAdmin: boolean) {
     const u = this.d.users.find((x) => x.id === id);
@@ -287,6 +339,21 @@ class MemoryRepo implements Repo {
       g.items.push(item);
     }
     return groups;
+  }
+  async addInfo(input: NewInfoInput) {
+    const maxOrder = this.d.info.filter((i) => i.category === input.category).reduce((m, i) => Math.max(m, i.sort_order), -1);
+    this.d.info.push({
+      id: uid(), category: input.category, title: input.title, content: input.content,
+      sort_order: maxOrder + 1, created_by: input.created_by, updated_by: input.created_by,
+      created_at: nowIso(), updated_at: nowIso(),
+    } as ImportantInfo);
+  }
+  async updateInfo(id: string, patch: Partial<Pick<ImportantInfo, "category" | "title" | "content" | "sort_order">>, updatedBy: string) {
+    const i = this.d.info.find((x) => x.id === id);
+    if (i) { Object.assign(i, patch); i.updated_by = updatedBy; i.updated_at = nowIso(); }
+  }
+  async deleteInfo(id: string) {
+    this.d.info = this.d.info.filter((i) => i.id !== id);
   }
   async listAnnouncements(): Promise<AnnouncementView[]> {
     return [...this.d.announcements]

@@ -11,10 +11,10 @@ export default async function OnboardingPage() {
   const user = await getCurrentUser();
   if (user) redirect("/");
   const isMemory = !isSupabaseConfigured();
-  const users = isMemory ? await getRepo().listUsers() : [];
+  const pending = await getRepo().listPending();
   return (
     <ToastProvider>
-      <OnboardingClient isMemory={isMemory} users={users} />
+      <OnboardingClient isMemory={isMemory} pending={pending} />
     </ToastProvider>
   );
 }

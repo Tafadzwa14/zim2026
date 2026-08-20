@@ -5,6 +5,7 @@ import type {
   FlightLeg,
   FlightStatus,
   ImportantInfo,
+  Place,
   Plan,
   PlanCategory,
   Pickup,
@@ -116,6 +117,22 @@ export interface NewAnnouncementInput {
 
 export type ClaimResult = { ok: true } | { ok: false; claimedBy: string | null };
 
+/** A roster row for the admin panel: public fields plus whether they've claimed. */
+export type RosterUser = PublicUser & { claimed: boolean };
+
+export interface NewInfoInput {
+  category: string;
+  title: string;
+  content: string;
+  created_by: string;
+}
+export interface NewPlaceInput {
+  name: string;
+  address?: string | null;
+  notes?: string | null;
+  created_by: string;
+}
+
 export interface Repo {
   readonly kind: "memory" | "supabase";
 
@@ -127,8 +144,24 @@ export interface Repo {
   getUserWithPin(username: string): Promise<{ id: string; pin_hash: string } | null>;
   usernameTaken(username: string): Promise<boolean>;
   createUser(input: NewUserInput): Promise<PublicUser>;
+  /** Admin-provisioned identities not yet claimed (sentinel PIN). */
+  listPending(): Promise<PublicUser[]>;
+  /** Claim a pending identity: set emoji + real PIN. Returns null if already claimed. */
+  claimUser(id: string, patch: { emoji: string; pinHash: string }): Promise<PublicUser | null>;
+  /** Admin roster: every user plus whether they've claimed their identity. */
+  listRoster(): Promise<RosterUser[]>;
+  resetUserPin(id: string): Promise<void>;
+  setUserRoles(id: string, roles: string[]): Promise<void>;
+  setUserLocation(id: string, stayingAt: string | null): Promise<void>;
+  deleteUser(id: string): Promise<void>;
   setAdmin(id: string, isAdmin: boolean): Promise<void>;
   setUserStatus(id: string, status: "upcoming" | "travelling" | "here"): Promise<void>;
+
+  // places
+  listPlaces(): Promise<Place[]>;
+  createPlace(input: NewPlaceInput): Promise<Place>;
+  updatePlace(id: string, patch: Partial<Pick<Place, "name" | "address" | "notes" | "sort_order">>): Promise<void>;
+  deletePlace(id: string): Promise<void>;
 
   // plans
   listPlans(): Promise<PlanView[]>;
@@ -167,6 +200,9 @@ export interface Repo {
 
   // info + announcements + activity
   listInfo(): Promise<InfoGroup[]>;
+  addInfo(input: NewInfoInput): Promise<void>;
+  updateInfo(id: string, patch: Partial<Pick<ImportantInfo, "category" | "title" | "content" | "sort_order">>, updatedBy: string): Promise<void>;
+  deleteInfo(id: string): Promise<void>;
   listAnnouncements(): Promise<AnnouncementView[]>;
   addAnnouncement(input: NewAnnouncementInput): Promise<void>;
   setAnnouncementPinned(id: string, pinned: boolean): Promise<void>;

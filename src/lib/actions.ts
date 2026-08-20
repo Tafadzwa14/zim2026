@@ -8,12 +8,12 @@ import {
   clearSession,
   getCurrentUser,
   hashPin,
+  PENDING_PIN,
   requireAdmin,
   requireUser,
   setSession,
   verifyPin,
 } from "@/lib/identity";
-import { serverEnv } from "@/lib/env";
 import { estimateProgress, getFlightStatus, searchFlight } from "@/lib/flights";
 import type { PlanCategory } from "@/lib/types";
 
@@ -37,28 +37,26 @@ async function actorName(id: string | null): Promise<string> {
 }
 
 // ============================ identity ============================
-const identitySchema = z.object({
-  name: z.string().trim().min(1).max(40),
-  username: z.string().trim().toLowerCase().regex(/^[a-z0-9_]{2,20}$/, "2–20 letters, numbers or _"),
+// New people don't self-register. An admin provisions each identity ahead of
+// time (name + username), and the person claims it here by picking themselves,
+// choosing an emoji and setting a PIN.
+const claimSchema = z.object({
+  userId: z.string().uuid(),
   emoji: z.string().trim().min(1).max(8),
   pin: z.string().regex(/^\d{4}$/, "PIN must be 4 digits"),
-  adminToken: z.string().optional(),
 });
 
-export async function createIdentity(input: unknown): Promise<ActionResult> {
-  const parsed = identitySchema.safeParse(input);
-  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Check the form");
-  const { name, username, emoji, pin, adminToken } = parsed.data;
+export async function claimIdentity(input: unknown): Promise<ActionResult> {
+  const parsed = claimSchema.safeParse(input);
+  if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Pick your name, an emoji and a 4-digit PIN");
+  const { userId, emoji, pin } = parsed.data;
   const repo = getRepo();
-  if (await repo.usernameTaken(username)) return fail("That username is taken");
-  const existing = await repo.listUsers();
-  const isFirst = existing.length === 0;
-  const tokenOk = Boolean(serverEnv.adminSetupToken) && adminToken === serverEnv.adminSetupToken;
-  const user = await repo.createUser({ name, username, emoji, pinHash: hashPin(pin), is_admin: isFirst || tokenOk, status: "here" });
+  const user = await repo.claimUser(userId, { emoji, pinHash: hashPin(pin) });
+  if (!user) return fail("That identity has already been set up — use Reclaim identity instead.");
   await setSession(user.id);
   await repo.addActivity(user.id, "profile_created", "joined Zim 2026");
   refresh();
-  return ok({}, `Welcome, ${name}!`);
+  return ok({}, `Welcome, ${user.name}!`);
 }
 
 export async function reclaimIdentity(input: unknown): Promise<ActionResult> {
@@ -266,6 +264,7 @@ export async function refreshFlight(travelId: string): Promise<ActionResult> {
 // ============================ pickups ============================
 export async function claimPickup(travelGroupId: string): Promise<ActionResult> {
   const me = await requireUser();
+  if (!me.is_admin && !me.roles.includes("driver")) return fail("Only a driver can take a pickup. Ask an admin to give you the driver role.");
   const repo = getRepo();
   const res = await repo.claimPickup(travelGroupId, me.id);
   if (!res.ok) return fail(`Looks like ${await actorName(res.claimedBy)} just claimed this`);
@@ -389,6 +388,120 @@ export async function updateSettings(input: { app_title?: string; wedding_date?:
   await getRepo().updateSettings(input);
   refresh();
   return ok({}, "Settings saved");
+}
+
+// ---------------------------- admin: roster ----------------------------
+const newPersonSchema = z.object({
+  name: z.string().trim().min(1).max(40),
+  username: z.string().trim().min(2).max(40),
+  is_admin: z.boolean().optional(),
+});
+export async function adminAddPerson(input: unknown): Promise<ActionResult> {
+  await requireAdmin();
+  const parsed = newPersonSchema.safeParse(input);
+  if (!parsed.success) return fail("Enter a name and a username (2+ characters)");
+  const { name, username, is_admin } = parsed.data;
+  const repo = getRepo();
+  if (await repo.usernameTaken(username)) return fail("That username is taken");
+  await repo.createUser({ name, username, emoji: "🙂", pinHash: PENDING_PIN, is_admin: is_admin ?? false, status: "here" });
+  refresh();
+  return ok({}, `${name} added — they can now claim their identity`);
+}
+export async function adminResetPin(userId: string): Promise<ActionResult> {
+  const me = await requireAdmin();
+  if (userId === me.id) return fail("You can't reset your own PIN here");
+  await getRepo().resetUserPin(userId);
+  refresh();
+  return ok({}, "PIN reset — they can set a new one from the login screen");
+}
+export async function adminSetRoles(userId: string, roles: string[]): Promise<ActionResult> {
+  await requireAdmin();
+  const clean = [...new Set(roles.map((r) => r.trim().toLowerCase()).filter(Boolean))];
+  await getRepo().setUserRoles(userId, clean);
+  refresh();
+  return ok({}, "Roles updated");
+}
+export async function adminSetLocation(userId: string, stayingAt: string): Promise<ActionResult> {
+  await requireAdmin();
+  const v = stayingAt.trim();
+  await getRepo().setUserLocation(userId, v || null);
+  refresh();
+  return ok({}, "Location updated");
+}
+export async function adminRemovePerson(userId: string): Promise<ActionResult> {
+  const me = await requireAdmin();
+  if (userId === me.id) return fail("You can't remove yourself");
+  await getRepo().deleteUser(userId);
+  refresh();
+  return ok({}, "Person removed");
+}
+
+// ---------------------------- admin: places ----------------------------
+export async function adminAddPlace(input: { name: string; address?: string; notes?: string }): Promise<ActionResult> {
+  const me = await requireAdmin();
+  const name = input.name?.trim();
+  if (!name) return fail("Add a place name");
+  await getRepo().createPlace({ name, address: input.address?.trim() || null, notes: input.notes?.trim() || null, created_by: me.id });
+  refresh();
+  return ok({}, "Place added");
+}
+export async function adminUpdatePlace(id: string, patch: { name?: string; address?: string | null; notes?: string | null }): Promise<ActionResult> {
+  await requireAdmin();
+  await getRepo().updatePlace(id, patch);
+  refresh();
+  return ok({}, "Place updated");
+}
+export async function adminDeletePlace(id: string): Promise<ActionResult> {
+  await requireAdmin();
+  await getRepo().deletePlace(id);
+  refresh();
+  return ok({}, "Place removed");
+}
+
+// ---------------------------- admin: important info ----------------------------
+export async function adminAddInfo(input: { category: string; title: string; content: string }): Promise<ActionResult> {
+  const me = await requireAdmin();
+  const category = input.category?.trim();
+  const title = input.title?.trim();
+  const content = input.content?.trim();
+  if (!category || !title || !content) return fail("Category, title and content are all required");
+  await getRepo().addInfo({ category, title, content, created_by: me.id });
+  refresh();
+  return ok({}, "Info added");
+}
+export async function adminUpdateInfo(id: string, patch: { category?: string; title?: string; content?: string }): Promise<ActionResult> {
+  const me = await requireAdmin();
+  await getRepo().updateInfo(id, patch, me.id);
+  refresh();
+  return ok({}, "Info updated");
+}
+export async function adminDeleteInfo(id: string): Promise<ActionResult> {
+  await requireAdmin();
+  await getRepo().deleteInfo(id);
+  refresh();
+  return ok({}, "Info removed");
+}
+
+// ---------------------------- admin: flights ----------------------------
+const legEditSchema = z.object({
+  flight_number: z.string().trim().min(2).optional(),
+  airline_name: z.string().trim().optional(),
+  origin_airport: z.string().trim().optional(),
+  destination_airport: z.string().trim().optional(),
+  scheduled_departure: z.string().trim().nullable().optional(),
+  scheduled_arrival: z.string().trim().nullable().optional(),
+  terminal_departure: z.string().trim().nullable().optional(),
+  aircraft_type: z.string().trim().nullable().optional(),
+  status: z.enum(["scheduled", "boarding", "air", "landed", "cancelled", "diverted"]).optional(),
+});
+export async function adminUpdateLeg(legId: string, patch: unknown): Promise<ActionResult> {
+  await requireAdmin();
+  const parsed = legEditSchema.safeParse(patch);
+  if (!parsed.success) return fail("Check the flight details");
+  const clean = Object.fromEntries(Object.entries(parsed.data).map(([k, v]) => [k, v === "" ? null : v]));
+  await getRepo().syncLeg(legId, clean as Partial<import("@/lib/types").FlightLeg>);
+  refresh();
+  return ok({}, "Flight updated");
 }
 
 export async function whoAmI() {

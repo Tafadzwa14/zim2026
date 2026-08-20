@@ -5,6 +5,7 @@ import { fmtDateLong, fmtDayShort, fmtTime, fmtTime24, timeAgo } from "@/lib/for
 import { FlightCard } from "@/components/flight-card";
 import { BackHeader, PersonChip, SectionHeader } from "@/components/ui";
 import { FlightStatusAdmin, PickupControl, RefreshFlight } from "@/components/interactive";
+import { FlightEditForm } from "@/components/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -70,7 +71,12 @@ export default async function FlightDetail({ params }: { params: Promise<{ id: s
           <p className="mt-2 px-1 text-xs text-muted">Aviation data shows when the provider supplies it.</p>
         </details>
 
-        {me.is_admin && <div className="mt-4"><FlightStatusAdmin travelId={t.id} legId={leg.id} /></div>}
+        {me.is_admin && (
+          <div className="mt-4 space-y-3">
+            <FlightStatusAdmin travelId={t.id} legId={leg.id} />
+            <FlightEditForm leg={leg} />
+          </div>
+        )}
       </div>
     </div>
   );

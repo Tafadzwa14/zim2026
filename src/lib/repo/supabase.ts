@@ -2,6 +2,7 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminSupabase } from "@/lib/supabase/admin";
+import { PENDING_PIN } from "@/lib/identity";
 import type {
   Announcement,
   AppSettings,
@@ -9,6 +10,7 @@ import type {
   FlightStatus,
   ImportantInfo,
   Pickup,
+  Place,
   Plan,
   PublicUser,
   ShoppingItem,
@@ -20,6 +22,8 @@ import type {
   ClaimResult,
   InfoGroup,
   NewAnnouncementInput,
+  NewInfoInput,
+  NewPlaceInput,
   NewPlanInput,
   NewShoppingInput,
   NewTaskInput,
@@ -27,12 +31,13 @@ import type {
   NewUserInput,
   PlanView,
   Repo,
+  RosterUser,
   ShoppingView,
   TaskView,
   TravelView,
 } from "./types";
 
-const USER_COLS = "id,name,username,emoji,is_admin,status,created_at,updated_at";
+const USER_COLS = "id,name,username,emoji,is_admin,status,roles,staying_at,created_at,updated_at";
 
 class SupabaseRepo implements Repo {
   readonly kind = "supabase" as const;
@@ -80,6 +85,60 @@ class SupabaseRepo implements Repo {
       .single();
     if (error) throw error;
     return data as PublicUser;
+  }
+  async listPending() {
+    const { data } = await this.sb.from("users").select(USER_COLS).eq("pin_hash", PENDING_PIN).order("name");
+    return (data ?? []) as PublicUser[];
+  }
+  async claimUser(id: string, patch: { emoji: string; pinHash: string }) {
+    // The pin_hash guard makes this a no-op if the identity was already claimed.
+    const { data, error } = await this.sb
+      .from("users")
+      .update({ emoji: patch.emoji, pin_hash: patch.pinHash })
+      .eq("id", id)
+      .eq("pin_hash", PENDING_PIN)
+      .select(USER_COLS)
+      .maybeSingle();
+    if (error) throw error;
+    return (data as PublicUser) ?? null;
+  }
+  async listRoster(): Promise<RosterUser[]> {
+    const { data } = await this.sb.from("users").select(`${USER_COLS},pin_hash`).order("name");
+    return ((data ?? []) as (PublicUser & { pin_hash: string })[]).map(({ pin_hash, ...rest }) => ({
+      ...(rest as PublicUser),
+      claimed: pin_hash.includes(":"),
+    }));
+  }
+  async resetUserPin(id: string) {
+    await this.sb.from("users").update({ pin_hash: PENDING_PIN }).eq("id", id);
+  }
+  async setUserRoles(id: string, roles: string[]) {
+    await this.sb.from("users").update({ roles }).eq("id", id);
+  }
+  async setUserLocation(id: string, stayingAt: string | null) {
+    await this.sb.from("users").update({ staying_at: stayingAt }).eq("id", id);
+  }
+  async deleteUser(id: string) {
+    await this.sb.from("users").delete().eq("id", id);
+  }
+  async listPlaces() {
+    const { data } = await this.sb.from("places").select("*").order("sort_order").order("name");
+    return (data ?? []) as Place[];
+  }
+  async createPlace(input: NewPlaceInput) {
+    const { data, error } = await this.sb
+      .from("places")
+      .insert({ name: input.name, address: input.address ?? null, notes: input.notes ?? null, created_by: input.created_by })
+      .select("*")
+      .single();
+    if (error) throw error;
+    return data as Place;
+  }
+  async updatePlace(id: string, patch: Partial<Pick<Place, "name" | "address" | "notes" | "sort_order">>) {
+    await this.sb.from("places").update(patch).eq("id", id);
+  }
+  async deletePlace(id: string) {
+    await this.sb.from("places").delete().eq("id", id);
   }
   async setAdmin(id: string, isAdmin: boolean) {
     await this.sb.from("users").update({ is_admin: isAdmin }).eq("id", id);
@@ -278,6 +337,20 @@ class SupabaseRepo implements Repo {
       g.items.push(item);
     }
     return groups;
+  }
+  async addInfo(input: NewInfoInput) {
+    const { data: rows } = await this.sb.from("important_info").select("sort_order").eq("category", input.category).order("sort_order", { ascending: false }).limit(1);
+    const next = ((rows?.[0] as { sort_order: number } | undefined)?.sort_order ?? -1) + 1;
+    await this.sb.from("important_info").insert({
+      category: input.category, title: input.title, content: input.content,
+      sort_order: next, created_by: input.created_by, updated_by: input.created_by,
+    });
+  }
+  async updateInfo(id: string, patch: Partial<Pick<ImportantInfo, "category" | "title" | "content" | "sort_order">>, updatedBy: string) {
+    await this.sb.from("important_info").update({ ...patch, updated_by: updatedBy }).eq("id", id);
+  }
+  async deleteInfo(id: string) {
+    await this.sb.from("important_info").delete().eq("id", id);
   }
   async listAnnouncements(): Promise<AnnouncementView[]> {
     const [{ data }, users] = await Promise.all([this.sb.from("announcements").select("*").order("is_pinned", { ascending: false }).order("created_at", { ascending: false }), this.userMap()]);

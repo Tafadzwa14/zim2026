@@ -12,12 +12,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!user) redirect("/onboarding");
 
   const repo = getRepo();
-  const [users, settings, shopping, tasks, travel] = await Promise.all([
+  const [users, settings, shopping, tasks, travel, places] = await Promise.all([
     repo.listUsers(),
     repo.getSettings(),
     repo.listShopping(),
     repo.listTasks(),
     repo.listTravel(),
+    repo.listPlaces(),
   ]);
   const counts = {
     pickups: travel.filter((t) => t.pickup?.requested && !t.pickup.driver_user_id).length,
@@ -31,6 +32,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <AppFrame
           user={user}
           users={users}
+          places={places}
           appTitle={settings.app_title}
           isMemory={!isSupabaseConfigured()}
           counts={counts}
