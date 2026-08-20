@@ -8,6 +8,9 @@ import type {
   Place,
   Plan,
   PlanAttendee,
+  Poll,
+  PollOption,
+  PollVote,
   ShoppingItem,
   Task,
   TravelGroup,
@@ -29,6 +32,9 @@ export interface SeedData {
   places: Place[];
   announcements: Announcement[];
   activity: Activity[];
+  polls: Poll[];
+  pollOptions: PollOption[];
+  pollVotes: PollVote[];
 }
 
 const nowIso = () => new Date().toISOString();
@@ -44,7 +50,7 @@ export function buildSeed(): SeedData {
     id: "singleton",
     app_title: "Zim 2026",
     wedding_date: "2026-09-12",
-    wedding_url: "https://example.com/wedding",
+    wedding_url: "https://becoming.thechiris.com",
     updated_at: nowIso(),
   };
 
@@ -63,5 +69,8 @@ export function buildSeed(): SeedData {
     places: [],
     announcements: [],
     activity: [],
+    polls: [],
+    pollOptions: [],
+    pollVotes: [],
   };
 }

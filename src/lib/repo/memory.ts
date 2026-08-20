@@ -5,10 +5,12 @@ import type {
   FlightLeg,
   FlightStatus,
   ImportantInfo,
+  Photo,
   Pickup,
   Place,
   Plan,
   PlanAttendee,
+  Poll,
   PublicUser,
   ShoppingItem,
   Task,
@@ -22,13 +24,17 @@ import type {
   InfoGroup,
   NewAnnouncementInput,
   NewInfoInput,
+  NewPhotoInput,
   NewPlaceInput,
   NewPlanInput,
+  NewPollInput,
   NewShoppingInput,
   NewTaskInput,
   NewTravelInput,
   NewUserInput,
+  PhotoView,
   PlanView,
+  PollView,
   Repo,
   RosterUser,
   ShoppingView,
@@ -48,6 +54,9 @@ function toPublic(u: User): PublicUser {
 class MemoryRepo implements Repo {
   readonly kind = "memory" as const;
   private d = buildSeed();
+  // No object storage in memory mode: hold the bytes inline as a data URL so
+  // the gallery still renders when running without Supabase credentials.
+  private photos: (Photo & { _url: string })[] = [];
 
   private user(id: string | null): PublicUser | null {
     if (!id) return null;
@@ -101,7 +110,7 @@ class MemoryRepo implements Repo {
     const u: User = {
       id: uid(), name: input.name, username: input.username, emoji: input.emoji,
       pin_hash: input.pinHash, is_admin: input.is_admin ?? false, status: input.status ?? "here",
-      roles: [], staying_at: null,
+      roles: [], staying_at: null, pin_reset_requested: false, prefs: {},
       created_at: nowIso(), updated_at: nowIso(),
     };
     this.d.users.push(u);
@@ -123,7 +132,13 @@ class MemoryRepo implements Repo {
   }
   async resetUserPin(id: string) {
     const u = this.d.users.find((x) => x.id === id);
-    if (u) { u.pin_hash = "PENDING"; u.updated_at = nowIso(); }
+    if (u) { u.pin_hash = "PENDING"; u.pin_reset_requested = false; u.updated_at = nowIso(); }
+  }
+  async requestPinReset(username: string) {
+    const u = this.d.users.find((x) => x.username.toLowerCase() === username.toLowerCase());
+    if (!u) return false;
+    u.pin_reset_requested = true; u.updated_at = nowIso();
+    return true;
   }
   async setUserRoles(id: string, roles: string[]) {
     const u = this.d.users.find((x) => x.id === id);
@@ -132,6 +147,10 @@ class MemoryRepo implements Repo {
   async setUserLocation(id: string, stayingAt: string | null) {
     const u = this.d.users.find((x) => x.id === id);
     if (u) { u.staying_at = stayingAt; u.updated_at = nowIso(); }
+  }
+  async setUserPrefs(id: string, prefs: import("@/lib/types").UserPrefs) {
+    const u = this.d.users.find((x) => x.id === id);
+    if (u) { u.prefs = prefs; u.updated_at = nowIso(); }
   }
   async deleteUser(id: string) {
     this.d.users = this.d.users.filter((u) => u.id !== id);
@@ -235,7 +254,7 @@ class MemoryRepo implements Repo {
       firstLegId ??= leg.id;
     }
     if (input.pickup) {
-      this.d.pickups.push({ id: uid(), travel_group_id: tg.id, flight_leg_id: firstLegId, requested: true, driver_user_id: null, notes: null, created_at: nowIso(), updated_at: nowIso() });
+      this.d.pickups.push({ id: uid(), travel_group_id: tg.id, flight_leg_id: firstLegId, requested: true, driver_user_id: null, driver_en_route: false, notes: null, created_at: nowIso(), updated_at: nowIso() });
     }
     return this.travelView(tg);
   }
@@ -258,7 +277,7 @@ class MemoryRepo implements Repo {
   async requestPickup(travelGroupId: string, flightLegId: string | null) {
     const existing = this.pickupOf(travelGroupId);
     if (existing) { existing.requested = true; existing.updated_at = nowIso(); return; }
-    this.d.pickups.push({ id: uid(), travel_group_id: travelGroupId, flight_leg_id: flightLegId, requested: true, driver_user_id: null, notes: null, created_at: nowIso(), updated_at: nowIso() });
+    this.d.pickups.push({ id: uid(), travel_group_id: travelGroupId, flight_leg_id: flightLegId, requested: true, driver_user_id: null, driver_en_route: false, notes: null, created_at: nowIso(), updated_at: nowIso() });
   }
   async claimPickup(travelGroupId: string, userId: string): Promise<ClaimResult> {
     const p = this.pickupOf(travelGroupId);
@@ -269,7 +288,11 @@ class MemoryRepo implements Repo {
   }
   async releasePickup(travelGroupId: string) {
     const p = this.pickupOf(travelGroupId);
-    if (p) { p.driver_user_id = null; p.updated_at = nowIso(); }
+    if (p) { p.driver_user_id = null; p.driver_en_route = false; p.updated_at = nowIso(); }
+  }
+  async setPickupEnRoute(travelGroupId: string, enRoute: boolean) {
+    const p = this.pickupOf(travelGroupId);
+    if (p) { p.driver_en_route = enRoute; p.updated_at = nowIso(); }
   }
 
   private shoppingView(s: ShoppingItem): ShoppingView {
@@ -373,7 +396,7 @@ class MemoryRepo implements Repo {
     if (input.is_pinned) this.d.announcements.forEach((a) => (a.is_pinned = false));
     this.d.announcements.unshift({
       id: uid(), title: input.title, content: input.content ?? null, is_pinned: input.is_pinned,
-      starts_at: null, expires_at: null, created_by: input.created_by, created_at: nowIso(), updated_at: nowIso(),
+      starts_at: null, expires_at: input.expires_at ?? null, created_by: input.created_by, created_at: nowIso(), updated_at: nowIso(),
     } as Announcement);
   }
   async setAnnouncementPinned(id: string, pinned: boolean) {
@@ -395,6 +418,60 @@ class MemoryRepo implements Repo {
       id: uid(), actor_user_id: actorId, type, entity_type: entity?.type ?? null, entity_id: entity?.id ?? null,
       metadata: { text }, created_at: nowIso(),
     } as Activity);
+  }
+
+  private pollView(p: Poll, userId: string): PollView {
+    const opts = this.d.pollOptions.filter((o) => o.poll_id === p.id).sort((a, b) => a.sort_order - b.sort_order);
+    const votes = this.d.pollVotes.filter((v) => v.poll_id === p.id);
+    const myVote = votes.find((v) => v.user_id === userId) ?? null;
+    return {
+      ...p,
+      options: opts.map((o) => ({ ...o, votes: votes.filter((v) => v.option_id === o.id).length })),
+      total: votes.length,
+      myOptionId: myVote?.option_id ?? null,
+      creator: this.user(p.created_by),
+    };
+  }
+  async listPolls(userId: string): Promise<PollView[]> {
+    return [...this.d.polls]
+      .sort((a, b) => Number(a.closed) - Number(b.closed) || b.created_at.localeCompare(a.created_at))
+      .map((p) => this.pollView(p, userId));
+  }
+  async createPoll(input: NewPollInput): Promise<PollView> {
+    const p: Poll = { id: uid(), question: input.question, closed: false, created_by: input.created_by, created_at: nowIso(), updated_at: nowIso() };
+    this.d.polls.push(p);
+    input.options.forEach((label, i) => this.d.pollOptions.push({ id: uid(), poll_id: p.id, label, sort_order: i }));
+    return this.pollView(p, input.created_by);
+  }
+  async votePoll(pollId: string, optionId: string, userId: string) {
+    const existing = this.d.pollVotes.find((v) => v.poll_id === pollId && v.user_id === userId);
+    if (existing) { existing.option_id = optionId; existing.created_at = nowIso(); return; }
+    this.d.pollVotes.push({ id: uid(), poll_id: pollId, option_id: optionId, user_id: userId, created_at: nowIso() });
+  }
+  async setPollClosed(id: string, closed: boolean) {
+    const p = this.d.polls.find((x) => x.id === id);
+    if (p) { p.closed = closed; p.updated_at = nowIso(); }
+  }
+  async deletePoll(id: string) {
+    this.d.polls = this.d.polls.filter((p) => p.id !== id);
+    this.d.pollOptions = this.d.pollOptions.filter((o) => o.poll_id !== id);
+    this.d.pollVotes = this.d.pollVotes.filter((v) => v.poll_id !== id);
+  }
+
+  async listPhotos(): Promise<PhotoView[]> {
+    return this.photos.map((p) => ({ ...p, url: p._url, uploader: this.user(p.uploaded_by) }));
+  }
+  async addPhoto(input: NewPhotoInput): Promise<PhotoView> {
+    const url = `data:${input.contentType};base64,${Buffer.from(input.bytes).toString("base64")}`;
+    const p: Photo & { _url: string } = {
+      id: uid(), storage_path: url, caption: input.caption ?? null, content_type: input.contentType,
+      size_bytes: input.size, uploaded_by: input.uploaded_by, created_at: nowIso(), _url: url,
+    };
+    this.photos.unshift(p);
+    return { ...p, url, uploader: this.user(input.uploaded_by) };
+  }
+  async deletePhoto(id: string) {
+    this.photos = this.photos.filter((p) => p.id !== id);
   }
 }
 

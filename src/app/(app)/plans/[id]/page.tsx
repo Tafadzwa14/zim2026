@@ -5,6 +5,7 @@ import { categoryOf } from "@/lib/display";
 import { fmtDateLong, fmtTime } from "@/lib/format";
 import { BackHeader, CatPill, PersonChip, SectionHeader } from "@/components/ui";
 import { DeletePlanButton, PlanJoinWide, PlanPeopleEditor } from "@/components/interactive";
+import { mapsUrl } from "@/lib/maps";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,11 @@ export default async function PlanDetail({ params }: { params: Promise<{ id: str
           <CatPill icon={c.icon} label={c.label} />
           <div className="disp mt-3 text-2xl font-extrabold">{plan.title}</div>
           <div className="mono mt-1.5 text-xs text-muted">{fmtDateLong(`${plan.date}T00:00:00+02:00`)}{plan.start_time ? ` · ${fmtTime(`${plan.date}T${plan.start_time}:00+02:00`)}` : ""}</div>
-          {plan.location && <div className="mt-2 font-bold">📍 {plan.location}</div>}
+          {plan.location && (
+            <a href={mapsUrl(plan.location)} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 font-bold text-honey underline decoration-honey/40 underline-offset-2">
+              📍 {plan.location}
+            </a>
+          )}
           {plan.description && <div className="mt-2.5 font-semibold text-ink2">{plan.description}</div>}
           <div className="mt-2.5 text-xs text-muted">Created by {plan.creator ? `${plan.creator.emoji} ${plan.creator.name}` : "—"}</div>
         </div>

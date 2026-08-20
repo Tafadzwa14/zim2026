@@ -15,6 +15,9 @@ export function categoryOf(id: string) {
   return CATEGORIES.find((c) => c.id === id) ?? CATEGORIES[1];
 }
 
+/** Fixed milestone events beyond the wedding, surfaced as big events. */
+export const GOGO_BIRTHDAY = { date: "2026-09-15", time: null, title: "Gogo's Birthday", icon: "🎂" } as const;
+
 export type StatusTone = "air" | "sched" | "land" | "cancel";
 export function flightStatusMeta(status: FlightStatus): { label: string; tone: StatusTone } {
   switch (status) {

@@ -38,9 +38,11 @@ export default async function FamilyPage() {
                   </div>
                 )}
               </div>
-              <span className="ml-auto flex-none">
-                {u.status === "here" ? <StatusPill tone="here">Here</StatusPill> : u.status === "travelling" ? <StatusPill tone="air">In the air</StatusPill> : <StatusPill tone="up">Arriving</StatusPill>}
-              </span>
+              {u.status !== "here" && (
+                <span className="ml-auto flex-none">
+                  {u.status === "travelling" ? <StatusPill tone="air">In the air</StatusPill> : <StatusPill tone="up">Arriving</StatusPill>}
+                </span>
+              )}
             </div>
           );
         })}

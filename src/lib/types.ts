@@ -21,6 +21,20 @@ export type PlanCategory =
   | "social"
   | "important";
 
+/** One surface's home layout: the widget order plus any the person hid. */
+export interface SurfaceLayout {
+  order: string[];
+  hidden: string[];
+}
+
+/** Per-person UI preferences. Empty object means "use the app defaults". */
+export interface UserPrefs {
+  home?: {
+    mobile?: SurfaceLayout;
+    desktop?: SurfaceLayout;
+  };
+}
+
 export interface User {
   id: string;
   name: string;
@@ -31,6 +45,10 @@ export interface User {
   status: LocationStatus;
   roles: string[];
   staying_at: string | null;
+  /** Set when the person asks an admin to reset their PIN; cleared on reset. */
+  pin_reset_requested: boolean;
+  /** UI preferences (customisable home layout). */
+  prefs: UserPrefs;
   created_at: string;
   updated_at: string;
 }
@@ -123,6 +141,8 @@ export interface Pickup {
   flight_leg_id: string | null;
   requested: boolean;
   driver_user_id: string | null;
+  /** Driver has set off for the airport. */
+  driver_en_route: boolean;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -208,7 +228,8 @@ export type ActivityType =
   | "task_added"
   | "task_claimed"
   | "task_completed"
-  | "announcement_added";
+  | "announcement_added"
+  | "photo_added";
 
 export interface Activity {
   id: string;
@@ -220,10 +241,44 @@ export interface Activity {
   created_at: string;
 }
 
+export interface Poll {
+  id: string;
+  question: string;
+  closed: boolean;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PollOption {
+  id: string;
+  poll_id: string;
+  label: string;
+  sort_order: number;
+}
+
+export interface PollVote {
+  id: string;
+  poll_id: string;
+  option_id: string;
+  user_id: string;
+  created_at: string;
+}
+
 export interface AppSettings {
   id: string;
   app_title: string;
   wedding_date: string;
   wedding_url: string;
   updated_at: string;
+}
+
+export interface Photo {
+  id: string;
+  storage_path: string;
+  caption: string | null;
+  content_type: string | null;
+  size_bytes: number | null;
+  uploaded_by: string | null;
+  created_at: string;
 }

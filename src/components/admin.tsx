@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import type { ReactNode } from "react";
 import { cn } from "@/lib/cn";
 import { useAction } from "@/lib/use-action";
 import * as actions from "@/lib/actions";
+import { mapsUrl } from "@/lib/maps";
 import { ROLES } from "@/lib/types";
 import type { FlightLeg, ImportantInfo, Place } from "@/lib/types";
 import type { InfoGroup, RosterUser } from "@/lib/repo/types";
@@ -22,6 +24,34 @@ function SmallBtn({ onClick, children, tone = "outline", disabled }: { onClick: 
     >
       {children}
     </button>
+  );
+}
+
+// ---------------------------------------------------------------- tabs
+export function AdminTabs({ tabs }: { tabs: { key: string; label: string; content: ReactNode }[] }) {
+  const [active, setActive] = useState(tabs[0]?.key ?? "");
+  const current = tabs.find((t) => t.key === active) ?? tabs[0];
+
+  return (
+    <div>
+      <div role="tablist" aria-label="Admin sections" className="mb-4 flex gap-1 overflow-x-auto rounded-xl border border-line bg-card p-1">
+        {tabs.map((t) => (
+          <button
+            key={t.key}
+            role="tab"
+            aria-selected={active === t.key}
+            onClick={() => setActive(t.key)}
+            className={cn(
+              "whitespace-nowrap rounded-lg px-3.5 py-1.5 text-[13px] font-extrabold transition-colors",
+              active === t.key ? "bg-honey text-white" : "text-muted",
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {current?.content}
+    </div>
   );
 }
 
@@ -81,7 +111,12 @@ export function RosterRow({ u, meId, places }: { u: RosterUser; meId: string; pl
             {u.name}
             {u.is_admin && <span className="mono text-[10px] text-honey">ADMIN</span>}
           </div>
-          <div className="mono text-[11px] text-muted">@{u.username} · {u.status}</div>
+          <div className="mono text-[11px] text-muted">@{u.username}{u.status !== "here" && ` · ${u.status}`}</div>
+          {u.pin_reset_requested && (
+            <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--warn)_18%,transparent)] px-2 py-0.5 text-[10px] font-bold text-warn">
+              ↻ PIN reset requested
+            </div>
+          )}
           {(roleLabels.length > 0 || u.staying_at) && (
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
               {roleLabels.map((r) => <span key={r.slug} className="rounded-full bg-chip px-2 py-0.5 text-[10px] font-bold text-ink2">{r.emoji} {r.label}</span>)}
@@ -122,7 +157,7 @@ export function RosterRow({ u, meId, places }: { u: RosterUser; meId: string; pl
               {places.map((p) => <option key={p.id} value={p.name}>{p.name}</option>)}
               {u.staying_at && !places.some((p) => p.name === u.staying_at) && <option value={u.staying_at}>{u.staying_at} (not in list)</option>}
             </select>
-            {places.length === 0 && <p className="mt-1 text-xs text-muted">Add places in the Places section below first.</p>}
+            {places.length === 0 && <p className="mt-1 text-xs text-muted">Add places in the Places tab first.</p>}
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -132,6 +167,104 @@ export function RosterRow({ u, meId, places }: { u: RosterUser; meId: string; pl
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- nudge unclaimed
+/** Lists people who haven't claimed their identity yet, with a copyable invite. */
+export function NudgeUnclaimed({ roster }: { roster: RosterUser[] }) {
+  const pending = roster.filter((u) => !u.claimed);
+  const [copied, setCopied] = useState<string | null>(null);
+
+  if (pending.length === 0) {
+    return <div className="zc-card px-4 py-3 text-sm font-semibold text-muted">Everyone has claimed their identity 🎉</div>;
+  }
+
+  const invite = (name: string, username: string) =>
+    `Hi ${name}, join our Zim 2026 family hub: open the app, tap "Reclaim identity", enter your username "${username}" and set a 4-digit PIN. See you there!`;
+
+  const copy = async (u: RosterUser) => {
+    try {
+      await navigator.clipboard.writeText(invite(u.name, u.username));
+      setCopied(u.id);
+      setTimeout(() => setCopied((c) => (c === u.id ? null : c)), 2000);
+    } catch {}
+  };
+
+  return (
+    <div className="zc-card overflow-hidden p-0">
+      {pending.map((u) => (
+        <div key={u.id} className="flex items-center gap-3 border-b border-line2 px-4 py-3 last:border-0">
+          <span className="text-xl" aria-hidden>{u.emoji}</span>
+          <div className="min-w-0 flex-1">
+            <div className="text-[15px] font-extrabold">{u.name}</div>
+            <div className="mono text-[11px] text-muted">@{u.username} · not claimed</div>
+          </div>
+          <SmallBtn onClick={() => copy(u)}>{copied === u.id ? "Copied ✓" : "Copy invite"}</SmallBtn>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- bulk locations
+/** Assign one place to several people at once. */
+export function BulkLocation({ roster, places }: { roster: RosterUser[]; places: Place[] }) {
+  const { run, pending } = useAction();
+  const [place, setPlace] = useState("");
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+
+  const toggle = (id: string) =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+
+  const apply = () => {
+    if (!place || picked.size === 0) return;
+    run(async () => {
+      for (const id of picked) await actions.adminSetLocation(id, place);
+      return { ok: true as const, message: `Set ${picked.size} ${picked.size === 1 ? "person" : "people"} at ${place}` };
+    }, { onSuccess: () => setPicked(new Set()) });
+  };
+
+  if (places.length === 0) {
+    return <div className="zc-card px-4 py-3 text-sm font-semibold text-muted">Add places first, then you can assign people in bulk.</div>;
+  }
+
+  return (
+    <div className="zc-card p-4">
+      <label className="zc-label">Place</label>
+      <select className="zc-input" value={place} onChange={(e) => setPlace(e.target.value)}>
+        <option value="">— choose a place —</option>
+        {places.map((p) => <option key={p.id} value={p.name}>{p.name}</option>)}
+      </select>
+      <div className="zc-label mt-3">People</div>
+      <div className="flex flex-wrap gap-1.5">
+        {roster.map((u) => {
+          const on = picked.has(u.id);
+          return (
+            <button
+              key={u.id}
+              onClick={() => toggle(u.id)}
+              className={cn("flex items-center gap-1.5 rounded-full border-[1.5px] px-2.5 py-1 text-xs font-bold", on ? "border-honey bg-[color-mix(in_srgb,var(--honey)_15%,transparent)] text-honey" : "border-line bg-card text-ink2")}
+            >
+              <span className="text-sm" aria-hidden>{u.emoji}</span>
+              {u.name}
+            </button>
+          );
+        })}
+      </div>
+      <button
+        onClick={apply}
+        disabled={pending || !place || picked.size === 0}
+        className="zc-btn mt-4 w-full py-2.5 text-sm disabled:opacity-50"
+      >
+        {picked.size > 0 && place ? `Set ${picked.size} at ${place}` : "Set location for selected"}
+      </button>
     </div>
   );
 }
@@ -152,6 +285,14 @@ export function PlacesManager({ places }: { places: Place[] }) {
                 <div className="text-[15px] font-extrabold">{p.name}</div>
                 {p.address && <div className="text-xs text-muted">{p.address}</div>}
               </div>
+              <a
+                href={mapsUrl(p.name, p.address)}
+                target="_blank"
+                rel="noreferrer"
+                className="whitespace-nowrap rounded-[10px] border border-line px-3 py-1.5 text-xs font-extrabold text-ink2"
+              >
+                Map ↗
+              </a>
               <SmallBtn tone="danger" onClick={() => { if (confirm(`Remove ${p.name}?`)) run(() => actions.adminDeletePlace(p.id)); }}>Remove</SmallBtn>
             </div>
           ))}

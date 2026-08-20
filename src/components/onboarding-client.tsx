@@ -8,7 +8,7 @@ import { useAction } from "@/lib/use-action";
 import * as actions from "@/lib/actions";
 import type { PublicUser } from "@/lib/types";
 
-export function OnboardingClient({ isMemory, pending, claimed }: { isMemory: boolean; pending: PublicUser[]; claimed: PublicUser[] }) {
+export function OnboardingClient({ pending, claimed }: { pending: PublicUser[]; claimed: PublicUser[] }) {
   const router = useRouter();
   const { run, pending: busy } = useAction();
   const [mode, setMode] = useState<"claim" | "reclaim">("claim");
@@ -127,14 +127,17 @@ export function OnboardingClient({ isMemory, pending, claimed }: { isMemory: boo
             <label className="zc-label">4-digit PIN</label>
             {pinBox(rPin, setRPin, rPinRefs)}
             <button className="zc-btn mt-5 w-full" disabled={busy || !rUser}>Restore identity</button>
+            <button
+              type="button"
+              disabled={busy || !rUser}
+              onClick={() => run(() => actions.requestPinReset(rUser))}
+              className="mt-3 w-full text-center text-xs font-bold text-muted underline disabled:opacity-50"
+            >
+              Forgot your PIN? Ask an admin to reset it
+            </button>
           </form>
         )}
 
-        {isMemory && (
-          <p className="mt-8 border-t border-line pt-5 text-xs text-muted">
-            Demo mode — no Supabase connected. The list above is seeded family; claiming one lets you explore as them.
-          </p>
-        )}
       </div>
     </div>
   );
