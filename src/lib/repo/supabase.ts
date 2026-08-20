@@ -9,6 +9,7 @@ import type {
   FlightLeg,
   FlightStatus,
   ImportantInfo,
+  Photo,
   Pickup,
   Place,
   Plan,
@@ -26,6 +27,7 @@ import type {
   InfoGroup,
   NewAnnouncementInput,
   NewInfoInput,
+  NewPhotoInput,
   NewPlaceInput,
   NewPlanInput,
   NewPollInput,
@@ -33,6 +35,7 @@ import type {
   NewTaskInput,
   NewTravelInput,
   NewUserInput,
+  PhotoView,
   PlanView,
   PollView,
   Repo,
@@ -42,7 +45,21 @@ import type {
   TravelView,
 } from "./types";
 
-const USER_COLS = "id,name,username,emoji,is_admin,status,roles,staying_at,pin_reset_requested,created_at,updated_at";
+const USER_COLS = "id,name,username,emoji,is_admin,status,roles,staying_at,pin_reset_requested,prefs,created_at,updated_at";
+
+/** Storage bucket holding the shared family photos (see 0006_photos.sql). */
+const PHOTO_BUCKET = "photos";
+
+/** Best-effort file extension for a stored object, from name then MIME type. */
+function photoExt(fileName: string, contentType: string): string {
+  const m = fileName.match(/\.[a-z0-9]+$/i);
+  if (m) return m[0].toLowerCase();
+  const byMime: Record<string, string> = {
+    "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp",
+    "image/gif": ".gif", "image/heic": ".heic", "image/heif": ".heif", "image/avif": ".avif",
+  };
+  return byMime[contentType] ?? "";
+}
 
 class SupabaseRepo implements Repo {
   readonly kind = "supabase" as const;
@@ -126,6 +143,9 @@ class SupabaseRepo implements Repo {
   }
   async setUserLocation(id: string, stayingAt: string | null) {
     await this.sb.from("users").update({ staying_at: stayingAt }).eq("id", id);
+  }
+  async setUserPrefs(id: string, prefs: import("@/lib/types").UserPrefs) {
+    await this.sb.from("users").update({ prefs }).eq("id", id);
   }
   async deleteUser(id: string) {
     await this.sb.from("users").delete().eq("id", id);
@@ -430,6 +450,42 @@ class SupabaseRepo implements Repo {
   }
   async deletePoll(id: string) {
     await this.sb.from("polls").delete().eq("id", id);
+  }
+
+  private photoView(p: Photo, users: Map<string, PublicUser>): PhotoView {
+    const { data } = this.sb.storage.from(PHOTO_BUCKET).getPublicUrl(p.storage_path);
+    return { ...p, url: data.publicUrl, uploader: p.uploaded_by ? users.get(p.uploaded_by) ?? null : null };
+  }
+  async listPhotos(): Promise<PhotoView[]> {
+    const [{ data }, users] = await Promise.all([
+      this.sb.from("photos").select("*").order("created_at", { ascending: false }),
+      this.userMap(),
+    ]);
+    return ((data ?? []) as Photo[]).map((p) => this.photoView(p, users));
+  }
+  async addPhoto(input: NewPhotoInput): Promise<PhotoView> {
+    const path = `${globalThis.crypto.randomUUID()}${photoExt(input.fileName, input.contentType)}`;
+    const { error: upErr } = await this.sb.storage
+      .from(PHOTO_BUCKET)
+      .upload(path, input.bytes, { contentType: input.contentType, upsert: false });
+    if (upErr) throw upErr;
+    const { data, error } = await this.sb
+      .from("photos")
+      .insert({ storage_path: path, caption: input.caption ?? null, content_type: input.contentType, size_bytes: input.size, uploaded_by: input.uploaded_by })
+      .select("*")
+      .single();
+    if (error) {
+      // Roll back the orphaned object if the metadata insert failed.
+      await this.sb.storage.from(PHOTO_BUCKET).remove([path]);
+      throw error;
+    }
+    return this.photoView(data as Photo, await this.userMap());
+  }
+  async deletePhoto(id: string) {
+    const { data } = await this.sb.from("photos").select("storage_path").eq("id", id).maybeSingle();
+    const path = (data as { storage_path: string } | null)?.storage_path;
+    if (path) await this.sb.storage.from(PHOTO_BUCKET).remove([path]);
+    await this.sb.from("photos").delete().eq("id", id);
   }
 }
 

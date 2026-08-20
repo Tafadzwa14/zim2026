@@ -19,7 +19,8 @@ import {
 } from "@/lib/identity";
 import { estimateProgress, getFlightPosition, getFlightStatus, searchFlight } from "@/lib/flights";
 import { routeFraction } from "@/lib/flights/geo";
-import type { PlanCategory } from "@/lib/types";
+import { sanitiseLayout, type Surface } from "@/lib/home-layout";
+import type { PlanCategory, UserPrefs } from "@/lib/types";
 
 export type ActionResult<T = unknown> =
   | ({ ok: true; message?: string } & T)
@@ -535,6 +536,28 @@ export async function adminSetRoles(userId: string, roles: string[]): Promise<Ac
   refresh();
   return ok({}, "Roles updated");
 }
+// ======================= home layout (self-serve) =======================
+// Each person can reorder and hide the widgets on their own home dashboard.
+// Mobile and desktop are kept independent.
+export async function setHomeLayout(surface: Surface, order: string[], hidden: string[]): Promise<ActionResult> {
+  const me = await requireUser();
+  if (surface !== "mobile" && surface !== "desktop") return fail("Unknown surface");
+  const layout = sanitiseLayout(surface, order, hidden);
+  const prefs: UserPrefs = { ...me.prefs, home: { ...me.prefs.home, [surface]: layout } };
+  await getRepo().setUserPrefs(me.id, prefs);
+  refresh();
+  return ok({}, "Home layout saved");
+}
+
+export async function resetHomeLayout(surface: Surface): Promise<ActionResult> {
+  const me = await requireUser();
+  const home = { ...me.prefs.home };
+  delete home[surface];
+  await getRepo().setUserPrefs(me.id, { ...me.prefs, home });
+  refresh();
+  return ok({}, "Home layout reset to default");
+}
+
 export async function adminSetLocation(userId: string, stayingAt: string): Promise<ActionResult> {
   await requireAdmin();
   const v = stayingAt.trim();
@@ -656,6 +679,39 @@ export async function deletePoll(pollId: string): Promise<ActionResult> {
   await repo.deletePoll(pollId);
   refresh();
   return ok({}, "Poll deleted");
+}
+
+// ============================ photos ============================
+/** Upload a photo to the shared gallery. Anyone signed in can add one. */
+export async function uploadPhoto(formData: FormData): Promise<ActionResult<{ id: string }>> {
+  const me = await requireUser();
+  const file = formData.get("file");
+  const caption = (formData.get("caption") as string | null)?.trim() || null;
+  if (!(file instanceof File)) return fail("Choose a photo to upload");
+  if (!file.type.startsWith("image/")) return fail("That's not an image — pick a photo (JPG, PNG, HEIC, and so on)");
+  if (file.size > 25 * 1024 * 1024) return fail("That image is too large (max 25 MB)");
+  const repo = getRepo();
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const photo = await repo.addPhoto({ bytes, fileName: file.name, contentType: file.type, size: file.size, caption, uploaded_by: me.id });
+    await repo.addActivity(me.id, "photo_added", "added a photo", { type: "photo", id: photo.id });
+    refresh();
+    return ok({ id: photo.id }, "Photo added");
+  } catch (err) {
+    console.error("[uploadPhoto] upload failed:", err);
+    return fail("Couldn't upload that photo — try again");
+  }
+}
+
+export async function deletePhoto(id: string): Promise<ActionResult> {
+  const me = await requireUser();
+  const repo = getRepo();
+  const photo = (await repo.listPhotos()).find((p) => p.id === id);
+  if (!photo) return fail("Photo not found");
+  if (photo.uploaded_by !== me.id && !me.is_admin) return fail("Only the person who added it or an admin can remove a photo");
+  await repo.deletePhoto(id);
+  refresh();
+  return ok({}, "Photo removed");
 }
 
 export async function whoAmI() {

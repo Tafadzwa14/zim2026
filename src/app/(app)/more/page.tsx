@@ -27,6 +27,7 @@ export default async function MorePage() {
     { href: "/shopping", icon: "🛒", label: "Shopping", badge: openShopping },
     { href: "/tasks", icon: "✅", label: "Tasks", badge: openTasks },
     { href: "/polls", icon: "📊", label: "Polls", badge: openPolls },
+    { href: "/photos", icon: "📷", label: "Photos" },
     { href: "/info", icon: "ℹ️", label: "Important info" },
     { href: "/activity", icon: "🔔", label: "Activity" },
     ...(me?.is_admin ? [{ href: "/admin", icon: "🛡️", label: "Admin" }] : []),

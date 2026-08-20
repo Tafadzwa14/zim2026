@@ -5,6 +5,8 @@ import { Screen, SectionHeader } from "@/components/ui";
 import { ThemeToggle } from "@/components/providers";
 import { SignOutButton } from "@/components/account";
 import { SwitchUserButton } from "@/components/interactive";
+import { HomeLayoutEditor } from "@/components/home/layout-editor";
+import { resolveLayout, surfaceLayout } from "@/lib/home-layout";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +33,14 @@ export default async function ProfilePage() {
           </div>
         </>
       )}
+
+      <SectionHeader>Customise home</SectionHeader>
+      <div className="mt-3">
+        <HomeLayoutEditor
+          mobile={resolveLayout("mobile", surfaceLayout(me.prefs, "mobile"))}
+          desktop={resolveLayout("desktop", surfaceLayout(me.prefs, "desktop"))}
+        />
+      </div>
 
       <div className="mt-6 flex flex-col gap-2.5">
         <a href={settings.wedding_url || "#"} target="_blank" rel="noreferrer" className="zc-btn zc-btn-ghost w-full">💍 Open wedding site</a>

@@ -4,8 +4,9 @@ import { getCurrentUser } from "@/lib/identity";
 import { tripDateOf, tripTodayISO, fmtDayShortUpper, fmtTime } from "@/lib/format";
 import { flightStatusMeta } from "@/lib/display";
 import { FlightCard } from "@/components/flight-card";
-import { CatPill, EmptyState, LiveDot, List, Screen, SectionHeader } from "@/components/ui";
+import { CatPill, LiveDot, List, Screen, SectionHeader } from "@/components/ui";
 import { PickupControl } from "@/components/interactive";
+import { PlaneFacts } from "@/components/plane-facts";
 import type { TravelView } from "@/lib/repo/types";
 import type { PublicUser } from "@/lib/types";
 
@@ -58,7 +59,7 @@ export default async function FlightsPage() {
 
   return (
     <Screen title="Flights ✈️" sub="Flight board and airport runs">
-      {travel.length === 0 && <EmptyState emoji="✈️" title="No flights yet" hint="Add travel to start tracking arrivals and pickups." />}
+      {travel.length === 0 && <PlaneFacts />}
 
       {runs.length > 0 && (
         <>

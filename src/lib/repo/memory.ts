@@ -5,6 +5,7 @@ import type {
   FlightLeg,
   FlightStatus,
   ImportantInfo,
+  Photo,
   Pickup,
   Place,
   Plan,
@@ -23,6 +24,7 @@ import type {
   InfoGroup,
   NewAnnouncementInput,
   NewInfoInput,
+  NewPhotoInput,
   NewPlaceInput,
   NewPlanInput,
   NewPollInput,
@@ -30,6 +32,7 @@ import type {
   NewTaskInput,
   NewTravelInput,
   NewUserInput,
+  PhotoView,
   PlanView,
   PollView,
   Repo,
@@ -51,6 +54,9 @@ function toPublic(u: User): PublicUser {
 class MemoryRepo implements Repo {
   readonly kind = "memory" as const;
   private d = buildSeed();
+  // No object storage in memory mode: hold the bytes inline as a data URL so
+  // the gallery still renders when running without Supabase credentials.
+  private photos: (Photo & { _url: string })[] = [];
 
   private user(id: string | null): PublicUser | null {
     if (!id) return null;
@@ -104,7 +110,7 @@ class MemoryRepo implements Repo {
     const u: User = {
       id: uid(), name: input.name, username: input.username, emoji: input.emoji,
       pin_hash: input.pinHash, is_admin: input.is_admin ?? false, status: input.status ?? "here",
-      roles: [], staying_at: null, pin_reset_requested: false,
+      roles: [], staying_at: null, pin_reset_requested: false, prefs: {},
       created_at: nowIso(), updated_at: nowIso(),
     };
     this.d.users.push(u);
@@ -141,6 +147,10 @@ class MemoryRepo implements Repo {
   async setUserLocation(id: string, stayingAt: string | null) {
     const u = this.d.users.find((x) => x.id === id);
     if (u) { u.staying_at = stayingAt; u.updated_at = nowIso(); }
+  }
+  async setUserPrefs(id: string, prefs: import("@/lib/types").UserPrefs) {
+    const u = this.d.users.find((x) => x.id === id);
+    if (u) { u.prefs = prefs; u.updated_at = nowIso(); }
   }
   async deleteUser(id: string) {
     this.d.users = this.d.users.filter((u) => u.id !== id);
@@ -446,6 +456,22 @@ class MemoryRepo implements Repo {
     this.d.polls = this.d.polls.filter((p) => p.id !== id);
     this.d.pollOptions = this.d.pollOptions.filter((o) => o.poll_id !== id);
     this.d.pollVotes = this.d.pollVotes.filter((v) => v.poll_id !== id);
+  }
+
+  async listPhotos(): Promise<PhotoView[]> {
+    return this.photos.map((p) => ({ ...p, url: p._url, uploader: this.user(p.uploaded_by) }));
+  }
+  async addPhoto(input: NewPhotoInput): Promise<PhotoView> {
+    const url = `data:${input.contentType};base64,${Buffer.from(input.bytes).toString("base64")}`;
+    const p: Photo & { _url: string } = {
+      id: uid(), storage_path: url, caption: input.caption ?? null, content_type: input.contentType,
+      size_bytes: input.size, uploaded_by: input.uploaded_by, created_at: nowIso(), _url: url,
+    };
+    this.photos.unshift(p);
+    return { ...p, url, uploader: this.user(input.uploaded_by) };
+  }
+  async deletePhoto(id: string) {
+    this.photos = this.photos.filter((p) => p.id !== id);
   }
 }
 

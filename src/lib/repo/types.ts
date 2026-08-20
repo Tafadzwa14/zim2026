@@ -5,6 +5,7 @@ import type {
   FlightLeg,
   FlightStatus,
   ImportantInfo,
+  Photo,
   Place,
   Plan,
   PlanCategory,
@@ -15,6 +16,7 @@ import type {
   ShoppingItem,
   Task,
   TravelGroup,
+  UserPrefs,
 } from "@/lib/types";
 
 // ---- view models (joined for the UI) ----
@@ -56,6 +58,11 @@ export interface PollView extends Poll {
   total: number;
   myOptionId: string | null;
   creator: PublicUser | null;
+}
+export interface PhotoView extends Photo {
+  /** Publicly reachable URL for the image (public bucket / data URL in memory). */
+  url: string;
+  uploader: PublicUser | null;
 }
 
 // ---- inputs ----
@@ -132,6 +139,14 @@ export interface NewPollInput {
   options: string[];
   created_by: string;
 }
+export interface NewPhotoInput {
+  bytes: Uint8Array;
+  fileName: string;
+  contentType: string;
+  size: number;
+  caption?: string | null;
+  uploaded_by: string;
+}
 
 export type ClaimResult = { ok: true } | { ok: false; claimedBy: string | null };
 
@@ -173,6 +188,8 @@ export interface Repo {
   requestPinReset(username: string): Promise<boolean>;
   setUserRoles(id: string, roles: string[]): Promise<void>;
   setUserLocation(id: string, stayingAt: string | null): Promise<void>;
+  /** Self-serve: persist a person's UI preferences (home layout). */
+  setUserPrefs(id: string, prefs: UserPrefs): Promise<void>;
   deleteUser(id: string): Promise<void>;
   setAdmin(id: string, isAdmin: boolean): Promise<void>;
   setUserStatus(id: string, status: "upcoming" | "travelling" | "here"): Promise<void>;
@@ -239,4 +256,9 @@ export interface Repo {
   votePoll(pollId: string, optionId: string, userId: string): Promise<void>;
   setPollClosed(id: string, closed: boolean): Promise<void>;
   deletePoll(id: string): Promise<void>;
+
+  // photos
+  listPhotos(): Promise<PhotoView[]>;
+  addPhoto(input: NewPhotoInput): Promise<PhotoView>;
+  deletePhoto(id: string): Promise<void>;
 }
