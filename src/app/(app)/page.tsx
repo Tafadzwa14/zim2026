@@ -318,17 +318,12 @@ export default async function HomePage() {
               <h1 className="disp text-3xl font-extrabold tracking-tight">{d.settings.app_title}</h1>
               <div className="mono mt-1 text-xs uppercase tracking-wide text-muted">{fmtWeekdayLong(new Date())}</div>
             </div>
-            <div className="grid min-w-[520px] flex-1 grid-cols-4 gap-3">
+            <div className="grid min-w-[520px] flex-1 grid-cols-3 gap-3">
               <MyStatTile d={d} me={me} />
               <Link href="/flights" className="zc-card flex min-h-[88px] flex-col p-4">
                 <div className="mono text-[10px] uppercase tracking-wide text-muted">✈️ In the air</div>
                 <div className="disp mt-auto text-[26px] font-extrabold">{active ? active.activeLeg!.flight_number : "0"}</div>
                 <div className="text-[13px] font-extrabold text-ink2">{active ? "In the air" : "None active"}</div>
-              </Link>
-              <Link href="/family" className="zc-card flex min-h-[88px] flex-col p-4">
-                <div className="mono text-[10px] uppercase tracking-wide text-muted">🏡 In Zimbabwe</div>
-                <div className="disp mt-auto text-[26px] font-extrabold">{d.here.length}</div>
-                <div className="text-[13px] font-extrabold text-ink2">of {d.users.length} family</div>
               </Link>
               <Link href="/flights" className="zc-card flex min-h-[88px] flex-col p-4">
                 <div className="mono text-[10px] uppercase tracking-wide text-muted">🛬 Arriving today</div>
