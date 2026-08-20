@@ -1,10 +1,10 @@
 import { notFound } from "next/navigation";
 import { getRepo } from "@/lib/repo";
 import { getCurrentUser } from "@/lib/identity";
-import { fmtDateLong, fmtDayShort, fmtTime, fmtTime24 } from "@/lib/format";
+import { fmtDateLong, fmtDayShort, fmtTime, fmtTime24, timeAgo } from "@/lib/format";
 import { FlightCard } from "@/components/flight-card";
 import { BackHeader, PersonChip, SectionHeader } from "@/components/ui";
-import { FlightStatusAdmin, PickupControl } from "@/components/interactive";
+import { FlightStatusAdmin, PickupControl, RefreshFlight } from "@/components/interactive";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +22,11 @@ export default async function FlightDetail({ params }: { params: Promise<{ id: s
       <BackHeader title={`${leg.flight_number} · ${leg.airline_name}`} href="/flights" />
       <div className="mt-3">
         <FlightCard travel={t} full />
+
+        <div className="mt-3 flex items-center justify-between">
+          <span className="mono text-[11px] text-muted">Updated {timeAgo(leg.last_synced_at ?? new Date().toISOString())}</span>
+          <RefreshFlight travelId={t.id} />
+        </div>
 
         <SectionHeader>Arrival</SectionHeader>
         <div className="zc-card p-4">

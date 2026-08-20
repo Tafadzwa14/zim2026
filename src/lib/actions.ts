@@ -14,7 +14,7 @@ import {
   verifyPin,
 } from "@/lib/identity";
 import { serverEnv } from "@/lib/env";
-import { searchFlight } from "@/lib/flights";
+import { estimateProgress, getFlightStatus, searchFlight } from "@/lib/flights";
 import type { PlanCategory } from "@/lib/types";
 
 export type ActionResult<T = unknown> =
@@ -210,6 +210,57 @@ export async function cycleFlightStatus(travelId: string, legId: string): Promis
   }
   refresh();
   return ok({}, `Status → ${next}`);
+}
+
+/** Pull live status from the flight provider and update the legs (spec sections 19, 25). */
+export async function refreshFlight(travelId: string): Promise<ActionResult> {
+  await requireUser();
+  const repo = getRepo();
+  const tg = await repo.getTravel(travelId);
+  if (!tg) return fail("Flight not found");
+  let landedAll = tg.legs.length > 0;
+  let anyAir = false;
+  try {
+    for (const leg of tg.legs) {
+      const date = (leg.scheduled_departure ?? "").slice(0, 10);
+      const status = date ? await getFlightStatus(leg.flight_number, date, leg.status === "air") : null;
+      if (!status) {
+        if (leg.status !== "landed") landedAll = false;
+        if (leg.status === "air") anyAir = true;
+        continue;
+      }
+      const dep = status.departure.actualTime ?? status.departure.estimatedTime ?? status.departure.scheduledTime ?? leg.scheduled_departure;
+      const arr = status.arrival.estimatedTime ?? status.arrival.scheduledTime ?? leg.scheduled_arrival;
+      const prog = status.status === "landed" ? 1 : status.status === "air" ? estimateProgress(dep, arr) : 0;
+      await repo.syncLeg(leg.id, {
+        status: status.status,
+        airline_name: status.airlineName ?? leg.airline_name,
+        estimated_departure: status.departure.estimatedTime,
+        actual_departure: status.departure.actualTime,
+        estimated_arrival: status.arrival.estimatedTime,
+        actual_arrival: status.arrival.actualTime,
+        terminal_departure: status.departure.terminal ?? leg.terminal_departure,
+        aircraft_type: status.aircraftType ?? leg.aircraft_type,
+        aircraft_type_code: status.aircraftTypeCode ?? leg.aircraft_type_code,
+        aircraft_registration: status.aircraftRegistration ?? leg.aircraft_registration,
+        delay_minutes: status.delayMinutes ?? leg.delay_minutes,
+        progress: prog,
+      });
+      if (status.status === "air") anyAir = true;
+      if (status.status !== "landed") landedAll = false;
+    }
+  } catch {
+    return fail("Live flight information is temporarily unavailable");
+  }
+  if (landedAll) {
+    await repo.setTravelStatus(travelId, "arrived");
+    for (const m of tg.members) await repo.setUserStatus(m.id, "here");
+  } else if (anyAir) {
+    await repo.setTravelStatus(travelId, "travelling");
+    for (const m of tg.members) await repo.setUserStatus(m.id, "travelling");
+  }
+  refresh();
+  return ok({}, "Flight updated");
 }
 
 // ============================ pickups ============================

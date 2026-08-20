@@ -191,6 +191,20 @@ export function DeleteAnnouncementButton({ id }: { id: string }) {
   return <Btn onClick={() => run(() => actions.deleteAnnouncement(id))}>Remove</Btn>;
 }
 
+export function RefreshFlight({ travelId }: { travelId: string }) {
+  const { run, pending } = useAction();
+  return (
+    <button
+      onClick={() => run(() => actions.refreshFlight(travelId))}
+      disabled={pending}
+      aria-label="Refresh flight from provider"
+      className="flex items-center gap-1.5 rounded-[10px] border border-line bg-card px-3 py-1.5 text-xs font-extrabold text-ink2 disabled:opacity-50"
+    >
+      <span className={cn(pending && "inline-block animate-spin")} aria-hidden>↻</span> {pending ? "Refreshing…" : "Refresh"}
+    </button>
+  );
+}
+
 export function FlightStatusAdmin({ travelId, legId }: { travelId: string; legId: string }) {
   const { run } = useAction();
   return <Btn variant="ghost" className="w-full py-2.5 text-sm" onClick={() => run(() => actions.cycleFlightStatus(travelId, legId))}>Admin: advance flight status</Btn>;

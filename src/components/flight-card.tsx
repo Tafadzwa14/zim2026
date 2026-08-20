@@ -67,7 +67,7 @@ export function FlightCard({ travel, full = false }: { travel: TravelView; full?
   if (!leg) return null;
   const dep = leg.estimated_departure ?? leg.scheduled_departure;
   const arr = leg.estimated_arrival ?? leg.scheduled_arrival;
-  const progress = leg.status === "landed" ? 1 : leg.status === "air" ? (leg.progress ?? progressFromTimes(dep, arr)) : 0;
+  const progress = leg.status === "landed" ? 1 : leg.status === "air" ? (leg.progress || progressFromTimes(dep, arr)) : 0;
   const driver = travel.driver;
 
   const inner = (
