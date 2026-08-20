@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getRepo } from "@/lib/repo";
+import { isItineraryParsingEnabled } from "@/lib/env";
+import { parseItineraryPdf } from "@/lib/itinerary";
 import type { NewLegInput } from "@/lib/repo/types";
 import {
   clearSession,
@@ -186,6 +188,43 @@ export async function createTravel(input: {
   if (input.pickup) await repo.addActivity(me.id, "pickup_requested", "requested an airport pickup", { type: "travel", id: group.id });
   refresh();
   return ok({ id: group.id }, "Travel added");
+}
+
+/** Read an uploaded itinerary PDF into a list of flight legs to prefill the form. */
+export async function parseItinerary(formData: FormData): Promise<ActionResult<{ legs: NewLegInput[]; passengers: string[]; booking_reference: string | null }>> {
+  await requireUser();
+  if (!isItineraryParsingEnabled()) return fail("Itinerary upload isn't set up. Add an OpenAI key to enable it.");
+  const file = formData.get("file");
+  if (!(file instanceof File)) return fail("Choose a PDF to upload");
+  if (file.type !== "application/pdf") return fail("That's not a PDF — export your itinerary as a PDF and try again");
+  if (file.size > 15 * 1024 * 1024) return fail("That PDF is too large (max 15 MB)");
+  let extracted;
+  try {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    extracted = await parseItineraryPdf(bytes, file.name);
+  } catch {
+    return fail("Couldn't read that itinerary — check it's a real flight PDF, or add the flight by number instead");
+  }
+  const legs: NewLegInput[] = extracted.legs
+    .filter((l) => l.flight_number && l.origin_airport && l.destination_airport)
+    .map((l, i) => ({
+      leg_order: i,
+      flight_number: l.flight_number,
+      airline_code: l.airline_code,
+      airline_name: l.airline_name,
+      origin_airport: l.origin_airport,
+      origin_city: l.origin_city,
+      destination_airport: l.destination_airport,
+      destination_city: l.destination_city,
+      scheduled_departure: l.scheduled_departure,
+      scheduled_arrival: l.scheduled_arrival,
+      terminal_departure: l.terminal_departure,
+      aircraft_type: l.aircraft_type,
+      status: "scheduled",
+      provider: "itinerary",
+    }));
+  if (!legs.length) return fail("No flights found in that PDF");
+  return ok({ legs, passengers: extracted.passengers ?? [], booking_reference: extracted.booking_reference ?? null }, `Found ${legs.length} flight${legs.length > 1 ? "s" : ""}`);
 }
 
 /** Admin: cycle a flight leg's status (spec: correct flight info). */

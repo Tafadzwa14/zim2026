@@ -36,7 +36,19 @@ export const serverEnv = {
   get adminSetupToken(): string {
     return process.env.ADMIN_SETUP_TOKEN ?? "";
   },
+  /** OpenAI, used to read flight details out of an uploaded itinerary PDF. */
+  get openaiApiKey(): string {
+    return process.env.OPENAI_API_KEY ?? "";
+  },
+  get openaiModel(): string {
+    return process.env.OPENAI_MODEL ?? "gpt-5.6";
+  },
 };
+
+/** True once an OpenAI key is present (enables itinerary PDF parsing). */
+export function isItineraryParsingEnabled(): boolean {
+  return Boolean(process.env.OPENAI_API_KEY);
+}
 
 function required(name: string): string {
   const value = process.env[name];

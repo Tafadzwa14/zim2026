@@ -25,7 +25,7 @@ export default async function AdminPage() {
       <SectionHeader meta={`${claimed}/${roster.length} claimed`}>People</SectionHeader>
       <div className="mb-3"><AddPersonForm /></div>
       <List>
-        {roster.map((u) => <RosterRow key={u.id} u={u} meId={me.id} />)}
+        {roster.map((u) => <RosterRow key={u.id} u={u} meId={me.id} places={places} />)}
       </List>
 
       <SectionHeader>Places</SectionHeader>

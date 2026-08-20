@@ -61,10 +61,9 @@ export function AddPersonForm() {
   );
 }
 
-export function RosterRow({ u, meId }: { u: RosterUser; meId: string }) {
+export function RosterRow({ u, meId, places }: { u: RosterUser; meId: string; places: Place[] }) {
   const { run } = useAction();
   const [open, setOpen] = useState(false);
-  const [loc, setLoc] = useState(u.staying_at ?? "");
   const isSelf = u.id === meId;
   const roleLabels = ROLES.filter((r) => u.roles.includes(r.slug));
 
@@ -112,16 +111,19 @@ export function RosterRow({ u, meId }: { u: RosterUser; meId: string }) {
             </div>
           </div>
 
-          <form
-            onSubmit={(e) => { e.preventDefault(); run(() => actions.adminSetLocation(u.id, loc)); }}
-            className="flex items-end gap-2"
-          >
-            <div className="flex-1">
-              <div className="zc-label">Staying at</div>
-              <input className="zc-input" value={loc} onChange={(e) => setLoc(e.target.value)} placeholder="e.g. 12 Fairway Close" />
-            </div>
-            <SmallBtn onClick={() => run(() => actions.adminSetLocation(u.id, loc))}>Save</SmallBtn>
-          </form>
+          <div>
+            <div className="zc-label">Staying at</div>
+            <select
+              className="zc-input"
+              value={u.staying_at ?? ""}
+              onChange={(e) => run(() => actions.adminSetLocation(u.id, e.target.value))}
+            >
+              <option value="">— not set —</option>
+              {places.map((p) => <option key={p.id} value={p.name}>{p.name}</option>)}
+              {u.staying_at && !places.some((p) => p.name === u.staying_at) && <option value={u.staying_at}>{u.staying_at} (not in list)</option>}
+            </select>
+            {places.length === 0 && <p className="mt-1 text-xs text-muted">Add places in the Places section below first.</p>}
+          </div>
 
           <div className="flex flex-wrap gap-2">
             {!isSelf && <SmallBtn onClick={() => run(() => actions.setAdmin(u.id, !u.is_admin))}>{u.is_admin ? "Revoke admin" : "Make admin"}</SmallBtn>}

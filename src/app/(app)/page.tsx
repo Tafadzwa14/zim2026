@@ -45,13 +45,51 @@ function ArrivalRow({ t }: { t: TravelView }) {
   );
 }
 
-function WhosHere({ here }: { here: PublicUser[] }) {
+function PersonChip({ u }: { u: PublicUser }) {
   return (
-    <div className="flex flex-wrap gap-2">
-      {here.slice(0, 4).map((u) => (
-        <Link key={u.id} href="/family" className="zc-chip"><span className="text-lg" aria-hidden>{u.emoji}</span>{u.name}</Link>
+    <Link href="/family" className="zc-chip">
+      <span className="text-lg" aria-hidden>{u.emoji}</span>
+      <span className="flex flex-col leading-tight">
+        <span>{u.name}</span>
+        {u.staying_at && <span className="text-[10px] font-semibold text-muted">📍 {u.staying_at}</span>}
+      </span>
+    </Link>
+  );
+}
+
+function WhosHere({ here }: { here: PublicUser[] }) {
+  // Group people by where they're staying; those without a location yet fall
+  // back to a flat list (locations get assigned by an admin later).
+  const groups = new Map<string, PublicUser[]>();
+  const noLocation: PublicUser[] = [];
+  for (const u of here) {
+    if (u.staying_at) (groups.get(u.staying_at) ?? groups.set(u.staying_at, []).get(u.staying_at)!).push(u);
+    else noLocation.push(u);
+  }
+
+  if (groups.size === 0) {
+    return (
+      <div className="flex flex-wrap gap-2">
+        {here.slice(0, 4).map((u) => <PersonChip key={u.id} u={u} />)}
+        {here.length > 4 && <Link href="/family" className="self-center text-[13px] font-extrabold text-muted">+{here.length - 4} more</Link>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {[...groups].map(([loc, people]) => (
+        <div key={loc}>
+          <div className="mono mb-1.5 text-[11px] font-bold uppercase tracking-wide text-muted">📍 {loc} · {people.length}</div>
+          <div className="flex flex-wrap gap-2">{people.map((u) => <PersonChip key={u.id} u={u} />)}</div>
+        </div>
       ))}
-      {here.length > 4 && <Link href="/family" className="self-center text-[13px] font-extrabold text-muted">+{here.length - 4} more</Link>}
+      {noLocation.length > 0 && (
+        <div>
+          <div className="mono mb-1.5 text-[11px] font-bold uppercase tracking-wide text-muted">Location not set · {noLocation.length}</div>
+          <div className="flex flex-wrap gap-2">{noLocation.map((u) => <PersonChip key={u.id} u={u} />)}</div>
+        </div>
+      )}
     </div>
   );
 }

@@ -8,7 +8,7 @@ import { useAction } from "@/lib/use-action";
 import * as actions from "@/lib/actions";
 import type { PublicUser } from "@/lib/types";
 
-export function OnboardingClient({ isMemory, pending }: { isMemory: boolean; pending: PublicUser[] }) {
+export function OnboardingClient({ isMemory, pending, claimed }: { isMemory: boolean; pending: PublicUser[]; claimed: PublicUser[] }) {
   const router = useRouter();
   const { run, pending: busy } = useAction();
   const [mode, setMode] = useState<"claim" | "reclaim">("claim");
@@ -110,13 +110,23 @@ export function OnboardingClient({ isMemory, pending }: { isMemory: boolean; pen
               <button className="zc-btn mt-5 w-full" disabled={busy || !chosen}>Enter Zim 2026 →</button>
             </form>
           )
+        ) : claimed.length === 0 ? (
+          <div className="zc-card text-center">
+            <p className="font-bold text-ink">No one to reclaim yet</p>
+            <p className="mt-1.5 text-sm text-muted">Once someone has set up their identity, they can pick their name here to sign back in.</p>
+          </div>
         ) : (
           <form onSubmit={(e) => { e.preventDefault(); run(() => actions.reclaimIdentity({ username: rUser, pin: rPin.join("") }), { onSuccess: () => router.push("/") }); }}>
-            <label className="zc-label">Username</label>
-            <input className="zc-input" placeholder="your username" value={rUser} onChange={(e) => setRUser(e.target.value.toLowerCase())} />
+            <label className="zc-label">Who are you?</label>
+            <select className="zc-input" value={rUser} onChange={(e) => setRUser(e.target.value)}>
+              <option value="" disabled>Pick your name…</option>
+              {claimed.map((u) => (
+                <option key={u.id} value={u.username}>{u.emoji} {u.name}</option>
+              ))}
+            </select>
             <label className="zc-label">4-digit PIN</label>
             {pinBox(rPin, setRPin, rPinRefs)}
-            <button className="zc-btn mt-5 w-full" disabled={busy}>Restore identity</button>
+            <button className="zc-btn mt-5 w-full" disabled={busy || !rUser}>Restore identity</button>
           </form>
         )}
 

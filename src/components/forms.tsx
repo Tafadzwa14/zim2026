@@ -1,13 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import { CATEGORIES } from "@/lib/display";
-import { fmtTime } from "@/lib/format";
 import { useAction } from "@/lib/use-action";
 import * as actions from "@/lib/actions";
 import type { NewLegInput } from "@/lib/repo/types";
-import type { FlightSearchResult } from "@/lib/flights";
 import type { Place, PlanCategory, PublicUser } from "@/lib/types";
 
 const todayInput = () => new Date().toLocaleDateString("en-CA");
@@ -111,71 +109,116 @@ export function PlanForm({ me, users, places = [], onDone }: FormProps) {
   );
 }
 
+const isoToLocalInput = (iso: string | null | undefined): string => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+const localInputToIso = (v: string): string | null => (v ? new Date(v).toISOString() : null);
+
+function LegCard({ leg, index, onChange, onRemove }: { leg: NewLegInput; index: number; onChange: (patch: Partial<NewLegInput>) => void; onRemove: () => void }) {
+  return (
+    <div className="zc-card mt-2 border-[#eecfa3] bg-[#fbecd8] p-3.5 dark:bg-[color-mix(in_srgb,var(--honey)_16%,transparent)]">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="mono text-[11px] font-extrabold text-ink2">Leg {index + 1}</span>
+        <button type="button" onClick={onRemove} className="text-xs font-extrabold text-berry">Remove</button>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div><label className="zc-label">Flight</label><input className="zc-input uppercase" value={leg.flight_number} onChange={(e) => onChange({ flight_number: e.target.value.toUpperCase() })} /></div>
+        <div><label className="zc-label">Airline</label><input className="zc-input" value={leg.airline_name ?? ""} onChange={(e) => onChange({ airline_name: e.target.value })} /></div>
+        <div><label className="zc-label">From</label><input className="zc-input uppercase" value={leg.origin_airport} onChange={(e) => onChange({ origin_airport: e.target.value.toUpperCase() })} /></div>
+        <div><label className="zc-label">To</label><input className="zc-input uppercase" value={leg.destination_airport} onChange={(e) => onChange({ destination_airport: e.target.value.toUpperCase() })} /></div>
+      </div>
+      <label className="zc-label">Departs</label>
+      <input type="datetime-local" className="zc-input" value={isoToLocalInput(leg.scheduled_departure)} onChange={(e) => onChange({ scheduled_departure: localInputToIso(e.target.value) })} />
+      <label className="zc-label">Arrives</label>
+      <input type="datetime-local" className="zc-input" value={isoToLocalInput(leg.scheduled_arrival)} onChange={(e) => onChange({ scheduled_arrival: localInputToIso(e.target.value) })} />
+    </div>
+  );
+}
+
 export function TravelForm({ me, users, onDone }: FormProps) {
   const { run, pending } = useAction();
   const [travellers, setTravellers] = useState<string[]>([me.id]);
   const [pickup, setPickup] = useState(false);
+  const [legs, setLegs] = useState<NewLegInput[]>([]);
   const [flightNo, setFlightNo] = useState("");
   const [date, setDate] = useState(todayInput());
   const [searching, setSearching] = useState(false);
-  const [leg, setLeg] = useState<(NewLegInput & { found: FlightSearchResult }) | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+
+  const updateLeg = (i: number, patch: Partial<NewLegInput>) => setLegs((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+  const removeLeg = (i: number) => setLegs((ls) => ls.filter((_, idx) => idx !== i));
 
   async function search() {
     setSearching(true);
     setError(null);
     const res = await actions.searchFlightAction(flightNo, date);
     setSearching(false);
-    if (res.ok === false) {
-      setLeg(null);
-      setError(res.message);
-      return;
-    }
+    if (res.ok === false) { setError(res.message); return; }
     const r = res.results[0];
-    setLeg({
-      leg_order: 0, flight_number: r.flightNumber, airline_code: r.airlineCode, airline_name: r.airlineName,
+    setLegs((ls) => [...ls, {
+      leg_order: ls.length, flight_number: r.flightNumber, airline_code: r.airlineCode, airline_name: r.airlineName,
       origin_airport: r.departure.airport, origin_city: r.departure.city, destination_airport: r.arrival.airport, destination_city: r.arrival.city,
       scheduled_departure: r.departure.scheduledTime, scheduled_arrival: r.arrival.scheduledTime, estimated_arrival: r.arrival.estimatedTime,
       terminal_departure: r.departure.terminal, aircraft_type: r.aircraftType, aircraft_type_code: r.aircraftTypeCode, aircraft_registration: r.aircraftRegistration,
-      status: r.status, provider: "provider", provider_flight_id: r.providerFlightId, found: r,
-    });
+      status: r.status, provider: "provider", provider_flight_id: r.providerFlightId,
+    }]);
+    setFlightNo("");
+  }
+
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (fileRef.current) fileRef.current.value = "";
+    if (!file) return;
+    setUploading(true);
+    setError(null);
+    const fd = new FormData();
+    fd.append("file", file);
+    const res = await actions.parseItinerary(fd);
+    setUploading(false);
+    if (res.ok === false) { setError(res.message); return; }
+    setLegs(res.legs);
   }
 
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        if (!leg) {
-          setError("Search a flight first");
-          return;
-        }
-        const { found: _f, ...legInput } = leg;
-        void _f;
-        run(() => actions.createTravel({ travellers, pickup, legs: [legInput] }), { onSuccess: onDone });
+        if (!legs.length) { setError("Add at least one flight — upload an itinerary or search by number"); return; }
+        run(() => actions.createTravel({ travellers, pickup, legs: legs.map((l, i) => ({ ...l, leg_order: i })) }), { onSuccess: onDone });
       }}
     >
-      <label className="zc-label">Flight number</label>
-      <input className="zc-input uppercase" placeholder="e.g. EK713" value={flightNo} onChange={(e) => setFlightNo(e.target.value)} />
-      <label className="zc-label">Flight date</label>
-      <input type="date" className="zc-input" value={date} onChange={(e) => setDate(e.target.value)} />
-      <button type="button" className="zc-btn zc-btn-ghost zc-btn-sm mt-3 w-full py-2.5 text-sm" onClick={search} disabled={searching || !flightNo}>
-        {searching ? "Searching…" : "🔍 Search flight"}
+      <button type="button" onClick={() => fileRef.current?.click()} disabled={uploading} className="zc-btn w-full py-3 text-sm">
+        {uploading ? "Reading itinerary…" : "📄 Upload itinerary PDF"}
       </button>
+      <input ref={fileRef} type="file" accept="application/pdf" hidden onChange={onFile} />
+      <p className="mt-1.5 text-center text-[11px] text-muted">Reads every leg, layovers included. Check them below before saving.</p>
+
+      <div className="my-3 flex items-center gap-3 text-[11px] font-bold text-muted"><span className="h-px flex-1 bg-line" />OR ADD BY FLIGHT NUMBER<span className="h-px flex-1 bg-line" /></div>
+
+      <div className="grid grid-cols-2 gap-2.5">
+        <div><label className="zc-label">Flight number</label><input className="zc-input uppercase" placeholder="e.g. EK713" value={flightNo} onChange={(e) => setFlightNo(e.target.value)} /></div>
+        <div><label className="zc-label">Date</label><input type="date" className="zc-input" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+      </div>
+      <button type="button" className="zc-btn zc-btn-ghost zc-btn-sm mt-2 w-full py-2.5 text-sm" onClick={search} disabled={searching || !flightNo}>
+        {searching ? "Searching…" : "🔍 Search and add leg"}
+      </button>
+
       {error && <p className="mt-3 rounded-xl border border-[#f4dcac] bg-[#fff5e2] px-3 py-2 text-sm font-semibold text-[#b57d16]">{error}</p>}
-      {leg && (
-        <div className="zc-card mt-3 border-[#eecfa3] bg-[#fbecd8] p-4 dark:bg-[color-mix(in_srgb,var(--honey)_16%,transparent)]">
-          <div className="flex items-center justify-between">
-            <b className="mono">{leg.flight_number} · {leg.airline_name}</b>
-            <span className="rounded-full bg-chip px-2.5 py-1 text-[11px] font-extrabold text-ink2">✓ Found</span>
-          </div>
-          <div className="mt-2 flex items-end justify-between">
-            <div><div className="mono text-2xl font-semibold">{leg.origin_airport}</div><div className="text-[11px] text-muted">{leg.origin_city}</div></div>
-            <div className="text-right"><div className="mono text-2xl font-semibold">{leg.destination_airport}</div><div className="text-[11px] text-muted">{leg.destination_city}</div></div>
-          </div>
-          <div className="mt-2 text-xs font-semibold text-muted">{fmtTime(leg.scheduled_departure ?? null)} → {fmtTime(leg.scheduled_arrival ?? null)} · {leg.aircraft_type ?? "—"}</div>
-        </div>
+
+      {legs.length > 0 && (
+        <>
+          <label className="zc-label mt-4">Flights ({legs.length})</label>
+          {legs.map((l, i) => <LegCard key={i} leg={l} index={i} onChange={(patch) => updateLeg(i, patch)} onRemove={() => removeLeg(i)} />)}
+        </>
       )}
-      <label className="zc-label">Who&apos;s travelling?</label>
+
+      <label className="zc-label mt-4">Who&apos;s travelling?</label>
       <PeoplePicker users={users} value={travellers} onChange={setTravellers} />
       <Toggle on={pickup} onToggle={() => setPickup(!pickup)} label="Need airport pickup?" />
       <button className="zc-btn mt-5 w-full" disabled={pending}>Add travel</button>
