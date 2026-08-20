@@ -6,6 +6,7 @@ import { cn } from "@/lib/cn";
 import { useAction } from "@/lib/use-action";
 import * as actions from "@/lib/actions";
 import { mapsUrl } from "@/lib/maps";
+import { isoToTripInput, tripInputToIso } from "@/lib/format";
 import { ROLES } from "@/lib/types";
 import type { FlightLeg, ImportantInfo, Place } from "@/lib/types";
 import type { InfoGroup, RosterUser } from "@/lib/repo/types";
@@ -313,14 +314,6 @@ export function PlacesManager({ places }: { places: Place[] }) {
 }
 
 // ---------------------------------------------------------------- flights
-function isoToLocalInput(iso: string | null): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-const localInputToIso = (v: string): string | null => (v ? new Date(v).toISOString() : null);
-
 const FLIGHT_STATUSES = ["scheduled", "boarding", "air", "landed", "cancelled", "diverted"] as const;
 
 export function FlightEditForm({ leg }: { leg: FlightLeg }) {
@@ -334,8 +327,8 @@ export function FlightEditForm({ leg }: { leg: FlightLeg }) {
     terminal_departure: leg.terminal_departure ?? "",
     aircraft_type: leg.aircraft_type ?? "",
     status: leg.status,
-    scheduled_departure: isoToLocalInput(leg.scheduled_departure),
-    scheduled_arrival: isoToLocalInput(leg.scheduled_arrival),
+    scheduled_departure: isoToTripInput(leg.scheduled_departure),
+    scheduled_arrival: isoToTripInput(leg.scheduled_arrival),
   });
 
   if (!open) return <button onClick={() => setOpen(true)} className="zc-btn zc-btn-ghost w-full py-2.5 text-sm">Admin: edit flight details ✏️</button>;
@@ -353,8 +346,8 @@ export function FlightEditForm({ leg }: { leg: FlightLeg }) {
           terminal_departure: f.terminal_departure,
           aircraft_type: f.aircraft_type,
           status: f.status,
-          scheduled_departure: localInputToIso(f.scheduled_departure),
-          scheduled_arrival: localInputToIso(f.scheduled_arrival),
+          scheduled_departure: tripInputToIso(f.scheduled_departure),
+          scheduled_arrival: tripInputToIso(f.scheduled_arrival),
         }), { onSuccess: (r) => { if (r.ok) setOpen(false); } });
       }}
     >

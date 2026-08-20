@@ -297,6 +297,9 @@ class SupabaseRepo implements Repo {
     const { data: cur } = await this.sb.from("pickups").select("driver_user_id").eq("travel_group_id", travelGroupId).maybeSingle();
     return { ok: false, claimedBy: (cur as { driver_user_id: string | null } | null)?.driver_user_id ?? null };
   }
+  async assignPickup(travelGroupId: string, driverUserId: string) {
+    await this.sb.from("pickups").update({ driver_user_id: driverUserId, driver_en_route: false }).eq("travel_group_id", travelGroupId);
+  }
   async releasePickup(travelGroupId: string) {
     await this.sb.from("pickups").update({ driver_user_id: null, driver_en_route: false }).eq("travel_group_id", travelGroupId);
   }

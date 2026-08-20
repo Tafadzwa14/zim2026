@@ -5,6 +5,7 @@ import { cn } from "@/lib/cn";
 import { CATEGORIES } from "@/lib/display";
 import { useAction } from "@/lib/use-action";
 import * as actions from "@/lib/actions";
+import { isoToTripInput, tripInputToIso } from "@/lib/format";
 import type { NewLegInput } from "@/lib/repo/types";
 import type { Place, PlanCategory, PublicUser } from "@/lib/types";
 
@@ -109,15 +110,6 @@ export function PlanForm({ me, users, places = [], onDone }: FormProps) {
   );
 }
 
-const isoToLocalInput = (iso: string | null | undefined): string => {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-};
-const localInputToIso = (v: string): string | null => (v ? new Date(v).toISOString() : null);
-
 function LegCard({ leg, index, onChange, onRemove }: { leg: NewLegInput; index: number; onChange: (patch: Partial<NewLegInput>) => void; onRemove: () => void }) {
   return (
     <div className="zc-card mt-2 border-[color-mix(in_srgb,var(--honey)_35%,transparent)] bg-[color-mix(in_srgb,var(--honey)_16%,transparent)] p-3.5">
@@ -132,9 +124,9 @@ function LegCard({ leg, index, onChange, onRemove }: { leg: NewLegInput; index: 
         <div><label className="zc-label">To</label><input className="zc-input uppercase" value={leg.destination_airport} onChange={(e) => onChange({ destination_airport: e.target.value.toUpperCase() })} /></div>
       </div>
       <label className="zc-label">Departs</label>
-      <input type="datetime-local" className="zc-input" value={isoToLocalInput(leg.scheduled_departure)} onChange={(e) => onChange({ scheduled_departure: localInputToIso(e.target.value) })} />
+      <input type="datetime-local" className="zc-input" value={isoToTripInput(leg.scheduled_departure)} onChange={(e) => onChange({ scheduled_departure: tripInputToIso(e.target.value) })} />
       <label className="zc-label">Arrives</label>
-      <input type="datetime-local" className="zc-input" value={isoToLocalInput(leg.scheduled_arrival)} onChange={(e) => onChange({ scheduled_arrival: localInputToIso(e.target.value) })} />
+      <input type="datetime-local" className="zc-input" value={isoToTripInput(leg.scheduled_arrival)} onChange={(e) => onChange({ scheduled_arrival: tripInputToIso(e.target.value) })} />
     </div>
   );
 }

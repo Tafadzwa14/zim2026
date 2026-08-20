@@ -14,8 +14,9 @@ export const dynamic = "force-dynamic";
 
 export default async function FlightDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [t, me] = await Promise.all([getRepo().getTravel(id), getCurrentUser()]);
+  const [t, me, users] = await Promise.all([getRepo().getTravel(id), getCurrentUser(), getRepo().listUsers()]);
   if (!t || !me) return notFound();
+  const drivers = users.filter((u) => u.is_admin || u.roles.includes("driver"));
   const leg = t.activeLeg;
   if (!leg) return notFound();
   const driver = t.driver;
@@ -74,7 +75,7 @@ export default async function FlightDetail({ params }: { params: Promise<{ id: s
             <SectionHeader>Pickup</SectionHeader>
             <div className="zc-card flex items-center gap-2.5 p-4">
               <span className="text-xl" aria-hidden>🚗</span>
-              <PickupControl travelId={t.id} driver={driver} meId={me.id} isAdmin={me.is_admin} big={!driver} enRoute={t.pickup?.driver_en_route} />
+              <PickupControl travelId={t.id} driver={driver} meId={me.id} isAdmin={me.is_admin} canDrive={me.is_admin || me.roles.includes("driver")} drivers={drivers} big={!driver} enRoute={t.pickup?.driver_en_route} />
             </div>
           </>
         )}

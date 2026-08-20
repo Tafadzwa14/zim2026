@@ -5,9 +5,12 @@ import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { CatPill, EmptyState, List } from "@/components/ui";
 import { PlanJoinButton } from "@/components/interactive";
+import { Sheet } from "@/components/sheet";
+import { PlanForm } from "@/components/forms";
 import { categoryOf, GOGO_BIRTHDAY } from "@/lib/display";
 import { fmtTime } from "@/lib/format";
 import type { PlanView } from "@/lib/repo/types";
+import type { Place, PublicUser } from "@/lib/types";
 
 export type CalKind = "plan" | "travel" | "pickup" | "wedding" | "birthday";
 
@@ -59,20 +62,26 @@ function timeLabel(time: string | null) {
 export function CalendarView({
   events,
   plans,
-  meId,
+  me,
+  users,
+  places,
   today,
   wedding,
   initialView = "agenda",
 }: {
   events: CalEvent[];
   plans: PlanView[];
-  meId: string;
+  me: PublicUser;
+  users: PublicUser[];
+  places: Place[];
   today: string;
   wedding: { date: string; url: string | null };
   initialView?: ViewKey;
 }) {
+  const meId = me.id;
   const [view, setView] = useState<ViewKey>(initialView);
   const [off, setOff] = useState<Set<CalKind>>(new Set());
+  const [adding, setAdding] = useState(false);
 
   const shown = useMemo(() => events.filter((e) => !off.has(e.kind)), [events, off]);
   const toggle = (k: CalKind) => setOff((prev) => {
@@ -125,7 +134,7 @@ export function CalendarView({
 
       {view === "agenda" && <Agenda events={shown} meId={meId} today={today} />}
       {view === "month" && <Month events={shown} today={today} />}
-      {view === "plans" && <Plans plans={plans} meId={meId} today={today} />}
+      {view === "plans" && <Plans plans={plans} meId={meId} today={today} onAdd={() => setAdding(true)} />}
 
       {view !== "month" && !off.has("wedding") && (
         <a
@@ -156,6 +165,10 @@ export function CalendarView({
           </span>
         </div>
       )}
+
+      <Sheet open={adding} onClose={() => setAdding(false)} title="New plan">
+        <PlanForm me={me} users={users} places={places} onDone={() => setAdding(false)} />
+      </Sheet>
     </div>
   );
 }
@@ -296,8 +309,24 @@ function Month({ events, today }: { events: CalEvent[]; today: string }) {
   );
 }
 
-function Plans({ plans, meId, today }: { plans: PlanView[]; meId: string; today: string }) {
-  if (!plans.length) return <EmptyState emoji="📅" title="Nothing planned yet" hint="Tap + to add a plan." />;
+function AddPlanButton({ onAdd, className }: { onAdd: () => void; className?: string }) {
+  return (
+    <button onClick={onAdd} className={cn("zc-btn px-4 py-2 text-[13px]", className)}>
+      ＋ Add plan
+    </button>
+  );
+}
+
+function Plans({ plans, meId, today, onAdd }: { plans: PlanView[]; meId: string; today: string; onAdd: () => void }) {
+  if (!plans.length) {
+    return (
+      <EmptyState
+        emoji="📅"
+        title="Nothing planned yet"
+        hint={<AddPlanButton onAdd={onAdd} className="mt-3" />}
+      />
+    );
+  }
 
   const sorted = [...plans].sort((a, b) => (a.date + (a.start_time ?? "")).localeCompare(b.date + (b.start_time ?? "")));
   const upcoming = sorted.filter((p) => p.date >= today);
@@ -305,6 +334,10 @@ function Plans({ plans, meId, today }: { plans: PlanView[]; meId: string; today:
 
   return (
     <div className="flex flex-col gap-5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="mono text-[12px] font-semibold uppercase tracking-wide text-muted">{upcoming.length} upcoming</span>
+        <AddPlanButton onAdd={onAdd} />
+      </div>
       {upcoming.length > 0 && <PlanGrid plans={upcoming} meId={meId} />}
       {upcoming.length === 0 && <EmptyState emoji="🌤️" title="No upcoming plans" hint="Everything planned is in the past." />}
       {past.length > 0 && (

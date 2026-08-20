@@ -11,10 +11,12 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const { view } = await searchParams;
   const initialView = view === "month" || view === "plans" ? view : "agenda";
   const repo = getRepo();
-  const [plans, travel, settings, me] = await Promise.all([
+  const [plans, travel, settings, users, places, me] = await Promise.all([
     repo.listPlans(),
     repo.listTravel(),
     repo.getSettings(),
+    repo.listUsers(),
+    repo.listPlaces(),
     getCurrentUser(),
   ]);
   if (!me) return null;
@@ -55,7 +57,9 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
       <CalendarView
         events={evs}
         plans={plans}
-        meId={me.id}
+        me={me}
+        users={users}
+        places={places}
         today={tripTodayISO()}
         wedding={{ date: settings.wedding_date, url: settings.wedding_url }}
         initialView={initialView}

@@ -19,7 +19,8 @@ import type { PublicUser } from "@/lib/types";
 export interface HomeCtx {
   d: Dashboard;
   me: PublicUser;
-  active: TravelView | null;
+  /** Every group airborne right now — can be more than one at the same time. */
+  activeFlights: TravelView[];
   todayPlans: Dashboard["plans"];
   comingUp: { date: string; icon: string; title: string; href: string }[];
   infoSummary: { category: string; icon: string }[];
@@ -345,10 +346,10 @@ export function renderMobileWidget(id: string, ctx: HomeCtx): ReactNode {
       ) : null;
 
     case "in-the-air":
-      return ctx.active ? (
+      return ctx.activeFlights.length ? (
         <section>
-          <SectionHeader meta={<><LiveDot /> updated {timeAgo(ctx.active.activeLeg!.last_synced_at ?? new Date().toISOString())}</>}>In the air</SectionHeader>
-          <FlightCard travel={ctx.active} full />
+          <SectionHeader meta={<><LiveDot /> {ctx.activeFlights.length > 1 ? `${ctx.activeFlights.length} live` : `updated ${timeAgo(ctx.activeFlights[0].activeLeg!.last_synced_at ?? new Date().toISOString())}`}</>}>In the air</SectionHeader>
+          <div className="flex flex-col gap-3">{ctx.activeFlights.map((t) => <FlightCard key={t.id} travel={t} full />)}</div>
         </section>
       ) : null;
 
@@ -470,8 +471,10 @@ export function renderDesktopWidget(id: string, ctx: HomeCtx): ReactNode {
 
     case "in-the-air":
       return (
-        <Panel title="In the air" meta={ctx.active ? <><LiveDot /> live</> : "0 active"} pad>
-          {ctx.active ? <FlightCard travel={ctx.active} full /> : <PanelEmpty emoji="✈️" text="No family flights in the air right now" />}
+        <Panel title="In the air" meta={ctx.activeFlights.length ? <><LiveDot /> {ctx.activeFlights.length > 1 ? `${ctx.activeFlights.length} live` : "live"}</> : "0 active"} pad>
+          {ctx.activeFlights.length ? (
+            <div className="flex flex-col gap-3">{ctx.activeFlights.map((t) => <FlightCard key={t.id} travel={t} full />)}</div>
+          ) : <PanelEmpty emoji="✈️" text="No family flights in the air right now" />}
         </Panel>
       );
 
@@ -494,7 +497,7 @@ export function renderDesktopWidget(id: string, ctx: HomeCtx): ReactNode {
                   <div className="text-sm font-extrabold">{t.members.map((m) => m.emoji).join(" ")} {t.title}</div>
                   <div className="mono text-[10.5px] text-muted">{fmtDayShortUpper(t.arrivalIso)} · {t.activeLeg?.flight_number}</div>
                 </div>
-                <PickupControl travelId={t.id} driver={t.pickup?.driver_user_id ? t.members.find((m) => m.id === t.pickup?.driver_user_id) ?? d.users.find((u) => u.id === t.pickup?.driver_user_id) ?? null : null} meId={me.id} isAdmin={me.is_admin} enRoute={t.pickup?.driver_en_route} />
+                <PickupControl travelId={t.id} driver={t.pickup?.driver_user_id ? t.members.find((m) => m.id === t.pickup?.driver_user_id) ?? d.users.find((u) => u.id === t.pickup?.driver_user_id) ?? null : null} meId={me.id} isAdmin={me.is_admin} canDrive={me.is_admin || me.roles.includes("driver")} drivers={d.users.filter((u) => u.is_admin || u.roles.includes("driver"))} enRoute={t.pickup?.driver_en_route} />
               </div>
             ))
           ) : <PanelEmpty emoji="🚗" text="No pickups needed" />}

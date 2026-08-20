@@ -85,6 +85,29 @@ export function isSameTripDay(iso: string, dateStr: string): boolean {
   return tripDateOf(iso) === dateStr;
 }
 
+/**
+ * Render an instant as a `datetime-local` value (`YYYY-MM-DDTHH:mm`) in trip
+ * time, so flight-form inputs read in Zimbabwe wall-clock like the rest of the
+ * app rather than the viewer's browser timezone.
+ */
+export function isoToTripInput(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const { year, month, day, hour, minute } = parts(iso);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${year}-${p(month)}-${p(day)}T${p(hour)}:${p(minute)}`;
+}
+
+/**
+ * Interpret a `datetime-local` value as trip (Zimbabwe) wall-clock time and
+ * return an absolute ISO string. Harare is UTC+2 year-round (no DST), so the
+ * offset is fixed — the inverse of {@link isoToTripInput}.
+ */
+export function tripInputToIso(v: string): string | null {
+  return v ? `${v}:00+02:00` : null;
+}
+
 export function daysUntil(dateStr: string, now: Date = new Date()): number {
   const today = tripTodayISO(now);
   const a = new Date(`${today}T00:00:00Z`).getTime();

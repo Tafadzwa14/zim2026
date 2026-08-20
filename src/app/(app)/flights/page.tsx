@@ -34,6 +34,7 @@ function Row({ t }: { t: TravelView }) {
 function PickupCard({ t, me, users }: { t: TravelView; me: PublicUser; users: PublicUser[] }) {
   const leg = t.activeLeg;
   const driver = t.pickup?.driver_user_id ? users.find((u) => u.id === t.pickup?.driver_user_id) ?? null : null;
+  const drivers = users.filter((u) => u.is_admin || u.roles.includes("driver"));
   return (
     <div className="zc-card p-4">
       <div className="flex items-baseline justify-between">
@@ -42,7 +43,7 @@ function PickupCard({ t, me, users }: { t: TravelView; me: PublicUser; users: Pu
       </div>
       <div className="disp my-2 text-lg font-extrabold">{t.members.map((m) => m.emoji).join(" ")} {t.title}</div>
       {leg && <div className="mono text-[11px] text-muted">{leg.origin_city} → {leg.destination_city}</div>}
-      <div className="mt-3"><PickupControl travelId={t.id} driver={driver} meId={me.id} isAdmin={me.is_admin} big={!driver} enRoute={t.pickup?.driver_en_route} /></div>
+      <div className="mt-3"><PickupControl travelId={t.id} driver={driver} meId={me.id} isAdmin={me.is_admin} canDrive={me.is_admin || me.roles.includes("driver")} drivers={drivers} big={!driver} enRoute={t.pickup?.driver_en_route} /></div>
     </div>
   );
 }

@@ -286,6 +286,10 @@ class MemoryRepo implements Repo {
     p.driver_user_id = userId; p.updated_at = nowIso();
     return { ok: true };
   }
+  async assignPickup(travelGroupId: string, driverUserId: string) {
+    const p = this.pickupOf(travelGroupId);
+    if (p) { p.driver_user_id = driverUserId; p.driver_en_route = false; p.updated_at = nowIso(); }
+  }
   async releasePickup(travelGroupId: string) {
     const p = this.pickupOf(travelGroupId);
     if (p) { p.driver_user_id = null; p.driver_en_route = false; p.updated_at = nowIso(); }

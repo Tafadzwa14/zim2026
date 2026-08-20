@@ -25,10 +25,13 @@ import { AIRPORTS } from "@/lib/airports";
 // airport's local wall-clock, so we convert to UTC using the airport's zone;
 // the app then projects to trip time.
 
+// Keyed by the first three letters, lower-cased, so both full ("September")
+// and abbreviated ("Sep", "Sept") month names parse for every month.
 const MONTHS: Record<string, number> = {
-  January: 0, February: 1, March: 2, April: 3, May: 4, June: 5,
-  July: 6, August: 7, September: 8, October: 9, November: 10, December: 11,
+  jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+  jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
 };
+const monthIndex = (name: string): number | undefined => MONTHS[name.slice(0, 3).toLowerCase()];
 
 const AIRPORTS_LINE = /^([A-Z]{3})\s+-\s+(.+?)\s+([A-Z]{3})\s+-\s+(.+)$/;
 const TERMINAL_LINE = /^Terminal\s+(.+?)\s+Terminal\s+(.+)$/;
@@ -64,7 +67,7 @@ function parseDateTime(timeStr: string, dateStr: string) {
   if (!t || !dm) return null;
   let h = +t[1] % 12;
   if (/pm/i.test(t[3])) h += 12;
-  const mo = MONTHS[dm[2]];
+  const mo = monthIndex(dm[2]);
   if (mo === undefined) return null;
   return { h, mi: +t[2], y: +dm[3], mo, d: +dm[1] };
 }

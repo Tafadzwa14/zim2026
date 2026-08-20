@@ -1,7 +1,7 @@
 import { getRepo } from "@/lib/repo";
 import { getCurrentUser } from "@/lib/identity";
 import { EmptyState, Screen } from "@/components/ui";
-import { ShoppingList } from "@/components/interactive";
+import { AddShoppingButton, ShoppingList } from "@/components/interactive";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +11,7 @@ export default async function ShoppingPage() {
   if (!me) return null;
 
   return (
-    <Screen title="Shopping 🛒">
+    <Screen title="Shopping 🛒" action={<AddShoppingButton me={me} users={users} />}>
       {items.length === 0 ? (
         <EmptyState emoji="😎" title="Shopping list is empty" hint="Looks like we're stocked up." />
       ) : (

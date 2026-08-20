@@ -356,6 +356,19 @@ export async function claimPickup(travelGroupId: string): Promise<ActionResult> 
   refresh();
   return ok({}, "Pickup claimed — thank you!");
 }
+export async function assignPickup(travelGroupId: string, driverUserId: string): Promise<ActionResult> {
+  const me = await requireAdmin();
+  const repo = getRepo();
+  const target = (await repo.listUsers()).find((u) => u.id === driverUserId);
+  if (!target) return fail("That person isn't here");
+  if (!target.is_admin && !target.roles.includes("driver")) return fail(`${target.name} isn't a driver — give them the driver role first`);
+  const tg = await repo.getTravel(travelGroupId);
+  if (!tg?.pickup?.requested) return fail("No pickup to assign");
+  await repo.assignPickup(travelGroupId, driverUserId);
+  await repo.addActivity(me.id, "pickup_claimed", `assigned ${target.name} to collect ${tg.title}`, { type: "travel", id: travelGroupId });
+  refresh();
+  return ok({}, `${target.name} is on pickup duty`);
+}
 export async function releasePickup(travelGroupId: string): Promise<ActionResult> {
   const me = await requireUser();
   const repo = getRepo();

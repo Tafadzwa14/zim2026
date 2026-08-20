@@ -35,7 +35,9 @@ export default async function HomePage() {
   if (!me) return null;
 
   const photos = allPhotos.slice(0, 12);
-  const active = d.active[0]?.activeLeg ? d.active[0] : null;
+  // Every group live in the air right now — more than one can be airborne at
+  // the same time, so we surface all of them rather than just the first.
+  const activeFlights = d.active.filter((t) => t.activeLeg);
   const nudges = needsMe(d, me);
   const todayPlans = d.plans.filter((p) => p.date === d.today);
   const comingUp = [
@@ -43,7 +45,7 @@ export default async function HomePage() {
     ...d.plans.filter((p) => p.date > d.today).map((p) => ({ date: p.date, icon: categoryOf(p.category).icon, title: p.title, href: `/plans/${p.id}` })),
   ].filter((e) => e.date).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 6);
 
-  const ctx: HomeCtx = { d, me, active, todayPlans, comingUp, infoSummary, photos };
+  const ctx: HomeCtx = { d, me, activeFlights, todayPlans, comingUp, infoSummary, photos };
 
   // Each person's chosen order + hidden set, merged with the current defaults.
   const mobileWidgets = resolveLayout("mobile", surfaceLayout(me.prefs, "mobile")).filter((w) => w.visible);
@@ -85,8 +87,8 @@ export default async function HomePage() {
               <MyStatTile d={d} me={me} />
               <Link href="/flights" className="zc-card flex min-h-[88px] flex-col p-4">
                 <div className="mono text-[10px] uppercase tracking-wide text-muted">✈️ In the air</div>
-                <div className="disp mt-auto text-[26px] font-extrabold">{active ? active.activeLeg!.flight_number : "0"}</div>
-                <div className="text-[13px] font-extrabold text-ink2">{active ? "In the air" : "None active"}</div>
+                <div className="disp mt-auto text-[26px] font-extrabold">{activeFlights.length === 1 ? activeFlights[0].activeLeg!.flight_number : activeFlights.length}</div>
+                <div className="text-[13px] font-extrabold text-ink2">{activeFlights.length ? "In the air" : "None active"}</div>
               </Link>
               <Link href="/flights" className="zc-card flex min-h-[88px] flex-col p-4">
                 <div className="mono text-[10px] uppercase tracking-wide text-muted">🛬 Arriving today</div>

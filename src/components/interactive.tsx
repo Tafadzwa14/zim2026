@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
 import { EmptyState, List } from "@/components/ui";
+import { Sheet } from "@/components/sheet";
+import { ShoppingForm } from "@/components/forms";
 import { useAction } from "@/lib/use-action";
 import * as actions from "@/lib/actions";
 import { fmtDayShort, timeAgo } from "@/lib/format";
@@ -130,6 +132,21 @@ function shopRank(s: ShoppingView) {
   return s.claimed_by ? 1 : 0;
 }
 type ShopSeg = "all" | "mine" | "todo";
+
+/** Header action for the Shopping tab — opens the shopping form in a sheet. */
+export function AddShoppingButton({ me, users }: { me: PublicUser; users: PublicUser[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button onClick={() => setOpen(true)} className="zc-btn whitespace-nowrap px-3.5 py-2 text-sm">
+        ＋ Add item
+      </button>
+      <Sheet open={open} onClose={() => setOpen(false)} title="Add shopping item">
+        <ShoppingForm me={me} users={users} onDone={() => setOpen(false)} />
+      </Sheet>
+    </>
+  );
+}
 
 export function ShoppingList({ items, meId, users }: { items: ShoppingView[]; meId: string; users: PublicUser[] }) {
   const [seg, setSeg] = useState<ShopSeg>("all");
@@ -361,30 +378,69 @@ export function ActivityFeed({ activity, meId }: { activity: ActivityView[]; meI
   );
 }
 
-export function PickupControl({ travelId, driver, meId, isAdmin, big, enRoute }: { travelId: string; driver: PublicUser | null; meId: string; isAdmin: boolean; big?: boolean; enRoute?: boolean }) {
+export function PickupControl({ travelId, driver, meId, isAdmin, canDrive, drivers = [], big, enRoute }: { travelId: string; driver: PublicUser | null; meId: string; isAdmin: boolean; canDrive: boolean; drivers?: PublicUser[]; big?: boolean; enRoute?: boolean }) {
   const { run } = useAction();
+  const [assigning, setAssigning] = useState(false);
+  // Admins can hand the run to any eligible driver (other than the current one).
+  const assignable = isAdmin ? drivers.filter((u) => u.id !== driver?.id) : [];
+  const assign = (userId: string) => {
+    setAssigning(false);
+    run(() => actions.assignPickup(travelId, userId));
+  };
+  const assignPicker = assignable.length > 0 && (
+    <div className="flex w-full flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <Btn variant="ghost" onClick={() => setAssigning((a) => !a)}>{assigning ? "Cancel" : driver ? "Assign someone else" : "Assign a driver"}</Btn>
+      </div>
+      {assigning && (
+        <div className="flex flex-wrap gap-2">
+          {assignable.map((u) => (
+            <button
+              key={u.id}
+              onClick={() => assign(u.id)}
+              className="flex items-center gap-1.5 rounded-full border-[1.5px] border-line bg-card px-3 py-1.5 text-[13px] font-extrabold"
+            >
+              <span className="text-base" aria-hidden>{u.emoji}</span>
+              {u.id === meId ? "Me" : u.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
   if (driver) {
     const canRelease = driver.id === meId || isAdmin;
-    const canDrive = driver.id === meId || isAdmin;
+    const canGo = driver.id === meId || isAdmin;
     return (
       <div className="flex w-full flex-wrap items-center gap-2">
         <b className="text-[15px]">Pickup: {driver.emoji} {driver.name} ✓</b>
         {enRoute && <span className="rounded-full bg-[color-mix(in_srgb,var(--good)_18%,transparent)] px-2 py-0.5 text-[11px] font-bold text-good">🚗 On the way</span>}
         <div className="ml-auto flex items-center gap-2">
-          {canDrive && (
+          {canGo && (
             <Btn variant={enRoute ? "outline" : "solid"} onClick={() => run(() => actions.setPickupEnRoute(travelId, !enRoute))}>
               {enRoute ? "Not yet" : "I'm on my way"}
             </Btn>
           )}
-          {canRelease && <Btn onClick={() => run(() => actions.releasePickup(travelId))}>{driver.id === meId ? "Release" : "Reassign"}</Btn>}
+          {canRelease && <Btn onClick={() => run(() => actions.releasePickup(travelId))}>{driver.id === meId ? "Release" : "Reopen"}</Btn>}
         </div>
+        {assignPicker}
       </div>
     );
   }
-  return big ? (
-    <Btn variant="solid" className="w-full" onClick={() => run(() => actions.claimPickup(travelId))}>I&apos;ll pick them up</Btn>
-  ) : (
-    <Btn onClick={() => run(() => actions.claimPickup(travelId))}>I&apos;ll go</Btn>
+  if (!canDrive && !isAdmin) {
+    return <p className="text-[13px] text-muted">Needs a driver — ask an admin if you can help.</p>;
+  }
+  return (
+    <div className="flex w-full flex-col gap-2">
+      {canDrive &&
+        (big ? (
+          <Btn variant="solid" className="w-full" onClick={() => run(() => actions.claimPickup(travelId))}>I&apos;ll pick them up</Btn>
+        ) : (
+          <Btn onClick={() => run(() => actions.claimPickup(travelId))}>I&apos;ll go</Btn>
+        ))}
+      {assignPicker}
+    </div>
   );
 }
 

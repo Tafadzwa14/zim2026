@@ -36,7 +36,7 @@ export const DEFAULT_LAYOUT: Record<Surface, string[]> = {
   mobile: ["family-photos", "in-the-air", "arriving-today", "whos-where", "coming-next", "tonight", "pinned"],
   desktop: [
     "today", "in-the-air", "coming-up", "arrivals", "whos-where", "airport-pickups",
-    "family-photos", "shopping", "tasks", "activity", "important-info",
+    "family-photos", "shopping", "tasks", "important-info",
   ],
 };
 
