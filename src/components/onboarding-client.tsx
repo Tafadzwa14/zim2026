@@ -8,7 +8,7 @@ import { useAction } from "@/lib/use-action";
 import * as actions from "@/lib/actions";
 import type { PublicUser } from "@/lib/types";
 
-export function OnboardingClient({ isMemory, pending, claimed }: { isMemory: boolean; pending: PublicUser[]; claimed: PublicUser[] }) {
+export function OnboardingClient({ pending, claimed }: { pending: PublicUser[]; claimed: PublicUser[] }) {
   const router = useRouter();
   const { run, pending: busy } = useAction();
   const [mode, setMode] = useState<"claim" | "reclaim">("claim");
@@ -138,11 +138,6 @@ export function OnboardingClient({ isMemory, pending, claimed }: { isMemory: boo
           </form>
         )}
 
-        {isMemory && (
-          <p className="mt-8 border-t border-line pt-5 text-xs text-muted">
-            Demo mode — no Supabase connected. The list above is seeded family; claiming one lets you explore as them.
-          </p>
-        )}
       </div>
     </div>
   );

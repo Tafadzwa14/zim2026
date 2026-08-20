@@ -5,11 +5,11 @@ import Link from "next/link";
 import { cn } from "@/lib/cn";
 import { CatPill, EmptyState, List } from "@/components/ui";
 import { PlanJoinButton } from "@/components/interactive";
-import { categoryOf } from "@/lib/display";
+import { categoryOf, GOGO_BIRTHDAY } from "@/lib/display";
 import { fmtTime } from "@/lib/format";
 import type { PlanView } from "@/lib/repo/types";
 
-export type CalKind = "plan" | "travel" | "pickup" | "wedding";
+export type CalKind = "plan" | "travel" | "pickup" | "wedding" | "birthday";
 
 export interface CalEvent {
   id: string;
@@ -39,6 +39,7 @@ const FILTERS: { key: CalKind; label: string; icon: string }[] = [
   { key: "travel", label: "Travel", icon: "✈️" },
   { key: "pickup", label: "Pickups", icon: "🚗" },
   { key: "wedding", label: "Wedding", icon: "💍" },
+  { key: "birthday", label: "Birthday", icon: "🎂" },
 ];
 
 function dayLabel(date: string) {
@@ -141,6 +142,19 @@ export function CalendarView({
           </span>
           <span className="ml-auto text-2xl opacity-90" aria-hidden>›</span>
         </a>
+      )}
+
+      {view !== "month" && !off.has("birthday") && (
+        <div
+          className="mt-3 flex items-center gap-3.5 rounded-[22px] p-[18px] text-white"
+          style={{ background: "var(--grad-onboard)" }}
+        >
+          <span className="text-2xl" aria-hidden>🎂</span>
+          <span>
+            <span className="text-[11px] font-extrabold uppercase tracking-wide opacity-90">{dayLabel(GOGO_BIRTHDAY.date)}</span>
+            <span className="disp block text-xl font-extrabold">{GOGO_BIRTHDAY.title}</span>
+          </span>
+        </div>
       )}
     </div>
   );

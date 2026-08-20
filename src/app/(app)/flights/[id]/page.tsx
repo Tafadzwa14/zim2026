@@ -4,6 +4,8 @@ import { getCurrentUser } from "@/lib/identity";
 import { fmtDateLong, fmtDayShort, fmtTime, fmtTime24, timeAgo, tripDateOf } from "@/lib/format";
 import { getArrivalWeather } from "@/lib/weather";
 import { FlightCard } from "@/components/flight-card";
+import { WorldClocks } from "@/components/world-clocks";
+import { airportZone } from "@/lib/airports";
 import { BackHeader, PersonChip, SectionHeader } from "@/components/ui";
 import { FlightStatusAdmin, PickupControl, RefreshFlight } from "@/components/interactive";
 import { FlightEditForm } from "@/components/admin";
@@ -18,6 +20,13 @@ export default async function FlightDetail({ params }: { params: Promise<{ id: s
   if (!leg) return notFound();
   const driver = t.driver;
   const arr = leg.estimated_arrival ?? leg.scheduled_arrival;
+
+  // "Current airport" for the world clocks: where the traveller is (or is
+  // heading). Origin while waiting/boarding, destination once airborne or landed.
+  const atArrivalEnd = leg.status === "air" || leg.status === "landed";
+  const clockAirport = atArrivalEnd ? leg.destination_airport : leg.origin_airport;
+  const clockCity = atArrivalEnd ? leg.destination_city : leg.origin_city;
+  const clockLabel = leg.status === "air" ? `Arriving ${clockAirport}` : clockAirport;
   const weather = arr ? await getArrivalWeather(leg.destination_city, tripDateOf(arr)) : null;
 
   return (
@@ -25,6 +34,12 @@ export default async function FlightDetail({ params }: { params: Promise<{ id: s
       <BackHeader title={`${leg.flight_number} · ${leg.airline_name}`} href="/flights" />
       <div className="mt-3">
         <FlightCard travel={t} full />
+
+        <WorldClocks
+          airportZone={airportZone(clockAirport) ?? null}
+          airportLabel={clockLabel}
+          airportSub={clockCity}
+        />
 
         <div className="mt-3 flex items-center justify-between">
           <span className="mono text-[11px] text-muted">Updated {timeAgo(leg.last_synced_at ?? new Date().toISOString())}</span>

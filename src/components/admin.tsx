@@ -111,7 +111,7 @@ export function RosterRow({ u, meId, places }: { u: RosterUser; meId: string; pl
             {u.name}
             {u.is_admin && <span className="mono text-[10px] text-honey">ADMIN</span>}
           </div>
-          <div className="mono text-[11px] text-muted">@{u.username} · {u.status}</div>
+          <div className="mono text-[11px] text-muted">@{u.username}{u.status !== "here" && ` · ${u.status}`}</div>
           {u.pin_reset_requested && (
             <div className="mt-1 inline-flex items-center gap-1 rounded-full bg-[color-mix(in_srgb,var(--warn)_18%,transparent)] px-2 py-0.5 text-[10px] font-bold text-warn">
               ↻ PIN reset requested

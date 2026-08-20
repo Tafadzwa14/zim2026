@@ -3,8 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getRepo } from "@/lib/repo";
-import { isItineraryParsingEnabled } from "@/lib/env";
+import { isItineraryParsingEnabled, serverEnv } from "@/lib/env";
 import { parseItineraryPdf } from "@/lib/itinerary";
+import { parseItineraryPdfLocal } from "@/lib/itinerary-local";
 import type { NewLegInput } from "@/lib/repo/types";
 import {
   clearSession,
@@ -203,7 +204,7 @@ export async function createTravel(input: {
 /** Read an uploaded itinerary PDF into a list of flight legs to prefill the form. */
 export async function parseItinerary(formData: FormData): Promise<ActionResult<{ legs: NewLegInput[]; passengers: string[]; booking_reference: string | null }>> {
   await requireUser();
-  if (!isItineraryParsingEnabled()) return fail("Itinerary upload isn't set up. Add an OpenAI key to enable it.");
+  if (!isItineraryParsingEnabled()) return fail("Itinerary upload isn't set up.");
   const file = formData.get("file");
   if (!(file instanceof File)) return fail("Choose a PDF to upload");
   if (file.type !== "application/pdf") return fail("That's not a PDF — export your itinerary as a PDF and try again");
@@ -211,8 +212,21 @@ export async function parseItinerary(formData: FormData): Promise<ActionResult<{
   let extracted;
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
-    extracted = await parseItineraryPdf(bytes, file.name);
-  } catch {
+    extracted = serverEnv.itineraryParser === "openai"
+      ? await parseItineraryPdf(bytes, file.name)
+      : await parseItineraryPdfLocal(bytes, file.name);
+  } catch (err) {
+    // Log the real cause; the friendly message below never leaks the reason.
+    console.error("[parseItinerary] itinerary read failed:", err);
+    const status = (err as { status?: number })?.status;
+    const code = (err as { code?: string })?.code;
+    if (status === 401) {
+      return fail("Itinerary upload isn't configured correctly — the OpenAI key was rejected. Add the flight by number instead.");
+    }
+    if (status === 429 || code === "insufficient_quota" || code === "rate_limit_exceeded") {
+      return fail("Itinerary reading is temporarily unavailable. Add the flight by number instead, or try again later.");
+    }
+    // Genuine "we couldn't make sense of the document" case.
     return fail("Couldn't read that itinerary — check it's a real flight PDF, or add the flight by number instead");
   }
   const legs: NewLegInput[] = extracted.legs

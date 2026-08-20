@@ -1,6 +1,6 @@
 import { getRepo } from "@/lib/repo";
 import { getCurrentUser } from "@/lib/identity";
-import { categoryOf } from "@/lib/display";
+import { categoryOf, GOGO_BIRTHDAY } from "@/lib/display";
 import { fmtTime24, tripDateOf, tripTodayISO } from "@/lib/format";
 import { Screen } from "@/components/ui";
 import { CalendarView, type CalEvent } from "@/components/calendar-view";
@@ -47,6 +47,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   });
 
   evs.push({ id: "wedding", kind: "wedding", date: settings.wedding_date, time: "11:00", icon: "💍", title: "Wedding / Roora" });
+  evs.push({ id: "birthday", kind: "birthday", date: GOGO_BIRTHDAY.date, time: GOGO_BIRTHDAY.time, icon: GOGO_BIRTHDAY.icon, title: GOGO_BIRTHDAY.title });
   evs.sort((a, b) => (a.date + (a.time ?? "")).localeCompare(b.date + (b.time ?? "")));
 
   return (

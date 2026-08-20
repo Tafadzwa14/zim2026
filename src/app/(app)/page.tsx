@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getDashboard, type Dashboard } from "@/lib/dashboard";
 import { getCurrentUser } from "@/lib/identity";
-import { categoryOf } from "@/lib/display";
+import { categoryOf, GOGO_BIRTHDAY } from "@/lib/display";
 import { daysUntil, fmtDayShortUpper, fmtTime, fmtTime24, fmtWeekdayLong, timeAgo, tripDateOf } from "@/lib/format";
 import { FlightCard } from "@/components/flight-card";
 import { LiveDot, SectionHeader } from "@/components/ui";
@@ -21,6 +21,7 @@ function nextEvent(d: Dashboard): CalEv | null {
   d.plans.forEach((p) => evs.push({ icon: categoryOf(p.category).icon, title: p.title, date: p.date, time: p.start_time, href: `/plans/${p.id}` }));
   d.travel.forEach((t) => { if (t.arrivalIso) evs.push({ icon: "✈️", title: `${t.title} arrive`, date: tripDateOf(t.arrivalIso), time: fmtTime24(t.arrivalIso), href: `/flights/${t.id}` }); });
   evs.push({ icon: "💍", title: "Wedding / Roora", date: d.settings.wedding_date, time: "11:00", href: d.settings.wedding_url || "/calendar" });
+  evs.push({ icon: GOGO_BIRTHDAY.icon, title: GOGO_BIRTHDAY.title, date: GOGO_BIRTHDAY.date, time: GOGO_BIRTHDAY.time, href: "/calendar" });
   return evs.filter((e) => e.date >= d.today).sort((a, b) => (a.date + (a.time ?? "")).localeCompare(b.date + (b.time ?? "")))[0] ?? null;
 }
 
@@ -318,8 +319,16 @@ export default async function HomePage() {
           </section>
 
           <section className="break-inside-avoid">
-            <SectionHeader meta={<Link href="/family">{d.here.length} in Zimbabwe</Link>}>Who&apos;s where</SectionHeader>
-            <WhosHere here={d.here} />
+            <details open className="group">
+              <summary className="mt-6 mb-3 flex cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
+                <h2 className="disp text-lg font-extrabold">Who&apos;s where</h2>
+                <span className="mono ml-auto flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted">
+                  {d.here.length} in Zimbabwe
+                  <span className="text-sm transition-transform group-open:rotate-90" aria-hidden>›</span>
+                </span>
+              </summary>
+              <WhosHere here={d.here} />
+            </details>
           </section>
 
           {d.comingNext.length > 0 && (
@@ -406,7 +415,7 @@ export default async function HomePage() {
               <Panel title="Coming up" meta="Next few days" link={{ label: "Open calendar", href: "/calendar" }}>
                 {comingUp.length ? comingUp.map((e, i) => <EventRow key={i} icon={e.icon} title={e.title} lead={fmtDayShortUpper(`${e.date}T00:00:00+02:00`)} href={e.href} />) : <PanelEmpty text="Nothing coming up" />}
               </Panel>
-              <Panel title="Who's where" meta={`${d.here.length} in Zimbabwe`}>
+              <Panel title="Who's where" meta={`${d.here.length} in Zimbabwe`} collapsible>
                 <div className="px-3.5 pb-1"><WhosHere here={d.here} /></div>
               </Panel>
             </div>
@@ -473,14 +482,30 @@ export default async function HomePage() {
 }
 
 // ---- command centre helpers ----
-function Panel({ title, meta, link, pad, children }: { title: string; meta?: React.ReactNode; link?: { label: string; href: string }; pad?: boolean; children: React.ReactNode }) {
+function Panel({ title, meta, link, pad, collapsible, children }: { title: string; meta?: React.ReactNode; link?: { label: string; href: string }; pad?: boolean; collapsible?: boolean; children: React.ReactNode }) {
+  const header = (
+    <>
+      <h3 className="disp text-base font-extrabold">{title}</h3>
+      {meta && <span className="mono ml-auto flex items-center gap-1.5 text-[10.5px] uppercase tracking-wide text-muted">{meta}</span>}
+    </>
+  );
+  const body = <div className={pad ? "px-3.5 pb-4 pt-1.5" : "pb-1.5"}>{children}</div>;
   return (
     <section className="zc-card flex flex-col overflow-hidden">
-      <div className="flex items-center gap-2 px-[18px] pb-1.5 pt-4">
-        <h3 className="disp text-base font-extrabold">{title}</h3>
-        {meta && <span className="mono ml-auto flex items-center gap-1.5 text-[10.5px] uppercase tracking-wide text-muted">{meta}</span>}
-      </div>
-      <div className={pad ? "px-3.5 pb-4 pt-1.5" : "pb-1.5"}>{children}</div>
+      {collapsible ? (
+        <details open className="group">
+          <summary className={`flex cursor-pointer list-none items-center gap-2 px-[18px] pb-1.5 pt-4 [&::-webkit-details-marker]:hidden`}>
+            {header}
+            <span className={`text-muted transition-transform group-open:rotate-90 ${meta ? "" : "ml-auto"}`} aria-hidden>›</span>
+          </summary>
+          {body}
+        </details>
+      ) : (
+        <>
+          <div className="flex items-center gap-2 px-[18px] pb-1.5 pt-4">{header}</div>
+          {body}
+        </>
+      )}
       {link && <Link href={link.href} className="mono block border-t border-line2 px-4 py-2.5 text-[11px] font-semibold uppercase tracking-wide text-honey">{link.label} →</Link>}
     </section>
   );

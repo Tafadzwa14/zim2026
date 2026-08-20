@@ -60,7 +60,7 @@ class SupabaseRepo implements Repo {
 
   async getSettings(): Promise<AppSettings> {
     const { data } = await this.sb.from("app_settings").select("*").limit(1).single();
-    return (data as AppSettings) ?? { id: "singleton", app_title: "Zim 2026", wedding_date: "2026-09-12", wedding_url: "", updated_at: new Date().toISOString() };
+    return (data as AppSettings) ?? { id: "singleton", app_title: "Zim 2026", wedding_date: "2026-09-12", wedding_url: "https://becoming.thechiris.com", updated_at: new Date().toISOString() };
   }
   async updateSettings(patch: Partial<AppSettings>) {
     await this.sb.from("app_settings").update(patch).eq("id", true);

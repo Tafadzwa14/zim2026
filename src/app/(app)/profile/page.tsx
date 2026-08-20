@@ -26,7 +26,6 @@ export default async function ProfilePage() {
       {isMemory && (
         <>
           <SectionHeader>You&apos;re viewing as</SectionHeader>
-          <p className="-mt-1 text-xs text-muted">Demo mode. Switch identity to test claiming and permissions. Connect Supabase (see SETUP.md) for the real backend.</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {users.map((u) => <SwitchUserButton key={u.id} userId={u.id} current={u.id === me.id} emoji={u.emoji} name={u.name} />)}
           </div>
