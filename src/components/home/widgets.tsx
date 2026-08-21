@@ -3,14 +3,15 @@ import type { ReactNode } from "react";
 import { airportZone } from "@/lib/airports";
 import { cn } from "@/lib/cn";
 import type { Dashboard } from "@/lib/dashboard";
-import { categoryOf, flightStatusMeta, GOGO_BIRTHDAY } from "@/lib/display";
-import { durationLabel, fmtDayShortIn, fmtDayShortUpper, fmtTime, fmtTime24, fmtTimeIn, fmtZoneLabel, minutesBetween, timeAgo, tripDateOf } from "@/lib/format";
+import { categoryOf, flightStatusMeta, GOGO_BIRTHDAY, WEDDING_TIME } from "@/lib/display";
+import { durationLabel, fmtDayShortIn, fmtDayShortUpper, fmtTime, fmtTime24, fmtTimeIn, fmtZoneLabel, minutesBetween, timeAgo, tripDateOf, tripInstant } from "@/lib/format";
 import { currentLeg, legArrival, legDeparture, orderedLegs, type AirportRun, type AirportRunKind } from "@/lib/travel";
 import { FlightCard } from "@/components/flight-card";
 import { List, LiveDot, SectionHeader } from "@/components/ui";
 import { PickupControl, ShoppingItemRow, TaskItemRow } from "@/components/interactive";
 import { PhotoCarousel } from "@/components/photo-gallery";
 import { Dismissable } from "@/components/dismissable";
+import { ViewerTime } from "@/components/viewer-time";
 import type { PhotoView, TravelView } from "@/lib/repo/types";
 import type { FlightLeg, PublicUser } from "@/lib/types";
 
@@ -66,13 +67,13 @@ function nextEvent(d: Dashboard): CalEv | null {
   const evs: CalEv[] = [];
   d.plans.forEach((p) => evs.push({ icon: categoryOf(p.category).icon, title: p.title, date: p.date, time: p.start_time, href: `/plans/${p.id}` }));
   d.travel.forEach((t) => { if (t.arrivalIso) evs.push({ icon: "✈️", title: `${t.title} arrive`, date: tripDateOf(t.arrivalIso), time: fmtTime24(t.arrivalIso), href: `/flights/${t.id}` }); });
-  evs.push({ icon: "💍", title: "Wedding / Roora", date: d.settings.wedding_date, time: "11:00", href: d.settings.wedding_url || "/calendar" });
+  evs.push({ icon: "💍", title: "Wedding / Roora", date: d.settings.wedding_date, time: WEDDING_TIME, href: d.settings.wedding_url || "/calendar" });
   evs.push({ icon: GOGO_BIRTHDAY.icon, title: GOGO_BIRTHDAY.title, date: GOGO_BIRTHDAY.date, time: GOGO_BIRTHDAY.time, href: "/calendar" });
   return evs.filter((e) => e.date >= d.today).sort((a, b) => (a.date + (a.time ?? "")).localeCompare(b.date + (b.time ?? "")))[0] ?? null;
 }
 
 function evWhen(ev: CalEv, today: string): string {
-  const iso = `${ev.date}T${ev.time ?? "00:00"}:00+02:00`;
+  const iso = tripInstant(ev.date, ev.time);
   return ev.date === today ? (ev.time ? fmtTime(iso) : "Today") : fmtDayShortUpper(iso);
 }
 
@@ -547,7 +548,10 @@ export function renderMobileWidget(id: string, ctx: HomeCtx): ReactNode {
             <Link href={`/plans/${d.dinner.id}`} className="flex items-center gap-3.5 rounded-[22px] p-[17px] text-white shadow-[0_14px_26px_-18px_rgba(30,45,70,.6)]" style={{ background: "var(--grad-dinner)" }}>
               <span className="text-3xl" aria-hidden>🍲</span>
               <span><span className="disp block text-[17px] font-extrabold">{d.dinner.title}</span><span className="block text-[12.5px] font-bold opacity-90">{d.dinner.location}</span></span>
-              <span className="mono ml-auto mr-7 text-[15px] font-semibold">{fmtTime(`${d.dinner.date}T${d.dinner.start_time}:00+02:00`)}</span>
+              <span className="ml-auto mr-7 text-right">
+                <span className="mono block text-[15px] font-semibold">{fmtTime(tripInstant(d.dinner.date, d.dinner.start_time))}</span>
+                <ViewerTime iso={d.dinner.start_time ? tripInstant(d.dinner.date, d.dinner.start_time) : null} stacked className="text-[10.5px] text-white/75" />
+              </span>
             </Link>
           </Dismissable>
         </section>
@@ -590,7 +594,7 @@ export function renderDesktopWidget(id: string, ctx: HomeCtx): ReactNode {
               {d.pinned && <EventRow icon="📢" title={d.pinned.title} lead="Now" />}
               {w && <EventRow icon={w.emoji} title={`${w.label} · ${w.min}°–${w.max}°`} lead="Harare" />}
               {d.runsToday.map((r) => <EventRow key={r.id} icon={RUN_META[r.kind].emoji} title={`${RUN_META[r.kind].label} · ${r.trip.title}`} lead={fmtTime(r.hreIso)} href={`/flights/${r.tripId}`} />)}
-              {ctx.todayPlans.map((p) => <EventRow key={p.id} icon={categoryOf(p.category).icon} title={p.title} lead={p.start_time ? fmtTime(`${p.date}T${p.start_time}:00+02:00`) : "All day"} href={`/plans/${p.id}`} />)}
+              {ctx.todayPlans.map((p) => <EventRow key={p.id} icon={categoryOf(p.category).icon} title={p.title} lead={p.start_time ? fmtTime(tripInstant(p.date, p.start_time)) : "All day"} href={`/plans/${p.id}`} />)}
             </div>
           ) : <PanelEmpty emoji="🌤️" text="Nothing major today" />}
         </Panel>
@@ -611,7 +615,7 @@ export function renderDesktopWidget(id: string, ctx: HomeCtx): ReactNode {
     case "coming-up":
       return (
         <Panel title="Coming up" meta="Next few days" link={{ label: "Open calendar", href: "/calendar" }}>
-          {ctx.comingUp.length ? ctx.comingUp.map((e, i) => <EventRow key={i} icon={e.icon} title={e.title} lead={fmtDayShortUpper(`${e.date}T00:00:00+02:00`)} href={e.href} />) : <PanelEmpty text="Nothing coming up" />}
+          {ctx.comingUp.length ? ctx.comingUp.map((e, i) => <EventRow key={i} icon={e.icon} title={e.title} lead={fmtDayShortUpper(tripInstant(e.date))} href={e.href} />) : <PanelEmpty text="Nothing coming up" />}
         </Panel>
       );
 

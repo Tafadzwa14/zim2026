@@ -7,7 +7,7 @@ import { Sheet } from "@/components/sheet";
 import { ShoppingForm } from "@/components/forms";
 import { useAction } from "@/lib/use-action";
 import * as actions from "@/lib/actions";
-import { fmtDayShort, timeAgo } from "@/lib/format";
+import { fmtDayShort, timeAgo, tripInstant } from "@/lib/format";
 import type { ActivityView, ShoppingView, TaskView } from "@/lib/repo/types";
 import type { ActionResult } from "@/lib/actions";
 import type { PublicUser } from "@/lib/types";
@@ -256,7 +256,7 @@ export function TaskItemRow({ task, meId, today }: { task: TaskView; meId: strin
         </div>
         {task.due_date && (
           <div className={cn("text-xs font-semibold", overdue ? "text-warn" : "text-muted")}>
-            {overdue ? "Was due " : "Due "}{fmtDayShort(`${task.due_date}T00:00:00+02:00`)}
+            {overdue ? "Was due " : "Due "}{fmtDayShort(tripInstant(task.due_date))}
           </div>
         )}
         {task.assignee && (

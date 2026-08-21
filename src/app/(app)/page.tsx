@@ -85,7 +85,7 @@ export default async function HomePage() {
         <header className="sticky top-0 z-20 -mx-[18px] flex items-start justify-between gap-2.5 bg-paper px-[18px] pb-2.5 pt-4">
           <div>
             <h1 className="disp text-[26px] font-extrabold tracking-tight">{d.settings.app_title}</h1>
-            <div className="mono mt-0.5 text-[11px] uppercase tracking-wide text-muted">{fmtWeekdayLong(new Date())}</div>
+            <div className="mono mt-0.5 text-[11px] uppercase tracking-wide text-muted">{fmtWeekdayLong(new Date())} · Harare</div>
           </div>
           <div className="flex items-center gap-2">
             {me.is_admin && <Link href="/admin" className="rounded-full bg-ink px-3 py-[7px] text-[11px] font-extrabold text-paper">🛡️ Admin</Link>}
@@ -117,7 +117,7 @@ export default async function HomePage() {
           <div className="mb-5 flex flex-wrap items-center gap-6">
             <div>
               <h1 className="disp text-3xl font-extrabold tracking-tight">{d.settings.app_title}</h1>
-              <div className="mono mt-1 text-xs uppercase tracking-wide text-muted">{fmtWeekdayLong(new Date())}</div>
+              <div className="mono mt-1 text-xs uppercase tracking-wide text-muted">{fmtWeekdayLong(new Date())} · Harare</div>
             </div>
             <div className="grid min-w-[520px] flex-1 grid-cols-3 gap-3">
               <MyStatTile d={d} />

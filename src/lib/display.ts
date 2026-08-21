@@ -15,6 +15,9 @@ export function categoryOf(id: string) {
   return CATEGORIES.find((c) => c.id === id) ?? CATEGORIES[1];
 }
 
+/** Ceremony start, trip time. Not a setting: AppSettings only holds the date. */
+export const WEDDING_TIME = "11:00";
+
 /** Fixed milestone events beyond the wedding, surfaced as big events. */
 export const GOGO_BIRTHDAY = { date: "2026-09-15", time: null, title: "Gogo's Birthday", icon: "🎂" } as const;
 

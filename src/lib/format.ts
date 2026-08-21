@@ -57,13 +57,20 @@ export function fmtDayShort(iso: string | null): string {
   return fmtDayShortIn(iso);
 }
 
-/** Short zone name for an instant, e.g. `CAT` or `GMT+11`. "" when unknown. */
+/**
+ * Short zone name for an instant, e.g. `AEST` or `GMT+2`. "" when unknown.
+ *
+ * Formatted en-AU on purpose: most of this family flies out of Australia, and
+ * en-AU names those zones properly (AEST, AEDT in daylight saving, AWST) where
+ * en-GB only manages `GMT+10`. Everywhere else falls back to an unambiguous
+ * GMT offset.
+ */
 export function fmtZoneLabel(iso: string | null, tz?: string): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   try {
-    const f = new Intl.DateTimeFormat("en-GB", { timeZone: tz ?? TRIP_TZ, timeZoneName: "short" }).formatToParts(d);
+    const f = new Intl.DateTimeFormat("en-AU", { timeZone: tz ?? TRIP_TZ, timeZoneName: "short" }).formatToParts(d);
     return f.find((p) => p.type === "timeZoneName")?.value ?? "";
   } catch {
     return "";
@@ -140,6 +147,88 @@ export function tripInputToIso(v: string): string | null {
   return v ? `${v}:00+02:00` : null;
 }
 
+/**
+ * A date-only column plus an optional time-only column, as one real instant in
+ * trip time. Plans, tasks and the wedding store `date` and `start_time`
+ * separately with no zone of their own, so pinning them to Harare wall-clock is
+ * what turns them into something a formatter can read. Harare is UTC+2 all year,
+ * so the offset is fixed, as in {@link tripInputToIso}.
+ */
+export function tripInstant(date: string, time?: string | null): string {
+  return `${date}T${time ?? "00:00"}:00+02:00`;
+}
+
+/**
+ * How far ahead of UTC a zone runs at a given instant, in whole minutes.
+ * DST-aware. Rounded on purpose: the wall clock we read back has no seconds, so
+ * the raw division carries the instant's own seconds as a fraction, and
+ * subtracting two such values can land on 479.99999999999994 rather than 480.
+ * Every real zone offset is a whole number of minutes.
+ */
+export function zoneOffsetMinutes(iso: string, tz: string): number {
+  const at = new Date(iso).getTime();
+  if (Number.isNaN(at)) return 0;
+  const { year, month, day, hour, minute } = parts(iso, tz);
+  return Math.round((Date.UTC(year, month - 1, day, hour, minute) - at) / 60_000);
+}
+
+/** Abbreviated weekday in a zone, e.g. `Sun`. */
+function weekdayShortIn(iso: string, tz: string): string {
+  return new Intl.DateTimeFormat("en-AU", { timeZone: tz, weekday: "short" }).format(new Date(iso));
+}
+
+export interface ViewerReading {
+  /** Clock time in the viewer's zone, e.g. `3:00 AM`. */
+  time: string;
+  /** Day qualifier in the viewer's zone, e.g. `Sun`. Null when it's the same day. */
+  day: string | null;
+  /** How far ahead of the primary reading the viewer is, in minutes. Never 0. */
+  deltaMinutes: number;
+  /** Ready to render, e.g. `3:00 AM Sun`. */
+  label: string;
+}
+
+/**
+ * How a viewer reads an instant on their own clock, or null when there is
+ * nothing worth saying.
+ *
+ * Null when we don't know their zone yet, and null when their clock already
+ * matches the reading beside it. That test compares UTC offsets rather than zone
+ * names on purpose: someone in Johannesburg or Maputo is on a different zone but
+ * the very same clock, and a second identical reading would be pure noise.
+ *
+ * `baseTz` is the zone the primary reading is ALREADY in, and defaults to trip
+ * time. Pass it whenever the time beside this one is not Harare, or a viewer will
+ * be told "your time" for a clock that is already theirs.
+ *
+ * `day` is set only when their calendar day differs, which is not an edge case.
+ * A 7pm dinner in Harare is 3am the next morning in Melbourne, so a bare
+ * "3:00 AM your time" would leave someone expecting it tonight.
+ *
+ * `minDeltaMinutes` suppresses readings below a threshold, for the day we decide
+ * that telling London they are one hour out is not worth the line.
+ */
+export function viewerReading(
+  iso: string | null | undefined,
+  viewerTz: string | null,
+  baseTz: string = TRIP_TZ,
+  minDeltaMinutes = 0,
+): ViewerReading | null {
+  if (!iso || !viewerTz) return null;
+  if (Number.isNaN(new Date(iso).getTime())) return null;
+  try {
+    const delta = zoneOffsetMinutes(iso, viewerTz) - zoneOffsetMinutes(iso, baseTz);
+    if (delta === 0 || Math.abs(delta) < minDeltaMinutes) return null;
+    const time = fmtTimeIn(iso, viewerTz);
+    const day = dateIn(iso, viewerTz) !== dateIn(iso, baseTz) ? weekdayShortIn(iso, viewerTz) : null;
+    return { time, day, deltaMinutes: delta, label: day ? `${time} ${day}` : time };
+  } catch {
+    // Intl throws on a zone it can't resolve. A browser reporting something odd
+    // should cost the reader this one line, not the whole page.
+    return null;
+  }
+}
+
 export function daysUntil(dateStr: string, now: Date = new Date()): number {
   const today = tripTodayISO(now);
   const a = new Date(`${today}T00:00:00Z`).getTime();
@@ -164,11 +253,16 @@ export function minutesBetween(a: string | null | undefined, b: string | null | 
   return Math.round((tb - ta) / 60_000);
 }
 
-/** Minutes as `2h 40m`, `40m` or `3h`. Zero and negatives read as `0m`. */
+/**
+ * Minutes as `2h 40m`, `40m` or `3h`. Zero and negatives read as `0m`.
+ * Rounds to a whole minute before splitting, so a hair under 480 reads as `8h`
+ * rather than the `7h 60m` that rounding each part separately would produce.
+ */
 export function durationLabel(mins: number): string {
   if (!Number.isFinite(mins) || mins <= 0) return "0m";
-  const h = Math.floor(mins / 60);
-  const m = Math.round(mins % 60);
+  const total = Math.round(mins);
+  const h = Math.floor(total / 60);
+  const m = total % 60;
   if (!h) return `${m}m`;
   return m ? `${h}h ${m}m` : `${h}h`;
 }

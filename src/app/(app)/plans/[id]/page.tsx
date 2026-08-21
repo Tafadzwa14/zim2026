@@ -2,10 +2,11 @@ import { notFound } from "next/navigation";
 import { getRepo } from "@/lib/repo";
 import { getCurrentUser } from "@/lib/identity";
 import { categoryOf } from "@/lib/display";
-import { fmtDateLong, fmtTime } from "@/lib/format";
+import { fmtDateLong, fmtTime, tripInstant } from "@/lib/format";
 import { BackHeader, CatPill, PersonChip, SectionHeader } from "@/components/ui";
 import { DeletePlanButton, PlanJoinWide, PlanPeopleEditor } from "@/components/interactive";
 import { mapsUrl } from "@/lib/maps";
+import { ViewerTime } from "@/components/viewer-time";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,10 @@ export default async function PlanDetail({ params }: { params: Promise<{ id: str
         <div className="zc-card p-4">
           <CatPill icon={c.icon} label={c.label} />
           <div className="disp mt-3 text-2xl font-extrabold">{plan.title}</div>
-          <div className="mono mt-1.5 text-xs text-muted">{fmtDateLong(`${plan.date}T00:00:00+02:00`)}{plan.start_time ? ` · ${fmtTime(`${plan.date}T${plan.start_time}:00+02:00`)}` : ""}</div>
+          <div className="mono mt-1.5 text-xs text-muted">
+            {fmtDateLong(tripInstant(plan.date))}{plan.start_time ? ` · ${fmtTime(tripInstant(plan.date, plan.start_time))}` : ""}
+            <ViewerTime iso={plan.start_time ? tripInstant(plan.date, plan.start_time) : null} />
+          </div>
           {plan.location && (
             <a href={mapsUrl(plan.location)} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 font-bold text-honey underline decoration-honey/40 underline-offset-2">
               📍 {plan.location}

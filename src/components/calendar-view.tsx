@@ -7,8 +7,9 @@ import { CatPill, EmptyState, List } from "@/components/ui";
 import { PlanJoinButton } from "@/components/interactive";
 import { Sheet } from "@/components/sheet";
 import { PlanForm } from "@/components/forms";
-import { categoryOf, GOGO_BIRTHDAY } from "@/lib/display";
-import { fmtTime } from "@/lib/format";
+import { categoryOf, GOGO_BIRTHDAY, WEDDING_TIME } from "@/lib/display";
+import { fmtTime, tripInstant } from "@/lib/format";
+import { ViewerTime, ZoneNote } from "@/components/viewer-time";
 import type { PlanView } from "@/lib/repo/types";
 import type { Place, PublicUser } from "@/lib/types";
 
@@ -22,6 +23,13 @@ export interface CalEvent {
   icon: string;
   title: string;
   href?: string;
+  /**
+   * Ready-formatted clock time to show instead of the trip-time default, e.g.
+   * "5:45 PM AEST". Used for a flight that leaves or lands outside Zimbabwe,
+   * where the trip-time reading is right but useless to the person catching it.
+   * `date` and `time` stay in trip time, so the grid and the sort are unaffected.
+   */
+  displayTime?: string;
   // plan-only enrichment
   planId?: string;
   anyoneCanJoin?: boolean;
@@ -46,7 +54,7 @@ const FILTERS: { key: CalKind; label: string; icon: string }[] = [
 ];
 
 function dayLabel(date: string) {
-  return new Date(`${date}T00:00:00+02:00`).toLocaleDateString("en-GB", {
+  return new Date(tripInstant(date)).toLocaleDateString("en-GB", {
     weekday: "short",
     day: "numeric",
     month: "short",
@@ -54,9 +62,9 @@ function dayLabel(date: string) {
   });
 }
 
-function timeLabel(time: string | null) {
+function timeLabel(date: string, time: string | null) {
   if (!time) return "—";
-  return fmtTime(`2026-01-01T${time}:00+02:00`);
+  return fmtTime(tripInstant(date, time));
 }
 
 export function CalendarView({
@@ -148,6 +156,7 @@ export function CalendarView({
           <span>
             <span className="text-[11px] font-extrabold uppercase tracking-wide opacity-90">{dayLabel(wedding.date)}</span>
             <span className="disp block text-xl font-extrabold">Wedding / Roora</span>
+            <ViewerTime iso={tripInstant(wedding.date, WEDDING_TIME)} stacked className="text-[11px] text-white/75" />
           </span>
           <span className="ml-auto text-2xl opacity-90" aria-hidden>›</span>
         </a>
@@ -177,7 +186,7 @@ function AgendaRow({ e, meId }: { e: CalEvent; meId: string }) {
   const going = !!e.attendeeIds?.includes(meId);
   const core = (
     <>
-      <span className="mono flex-none text-xs font-semibold text-muted">{timeLabel(e.time)}</span>
+      <span className="mono flex-none text-xs font-semibold text-muted">{e.displayTime ?? timeLabel(e.date, e.time)}</span>
       <span className="text-lg" aria-hidden>{e.icon}</span>
       <span className="min-w-0 flex-1 truncate text-[15px] font-extrabold">{e.title}</span>
     </>
@@ -230,6 +239,7 @@ function Agenda({ events, meId, today }: { events: CalEvent[]; meId: string; tod
 
   return (
     <div className="flex flex-col gap-4">
+      <ZoneNote />
       {up.dates.length > 0 ? (
         <AgendaGroups dates={up.dates} groups={up.g} meId={meId} />
       ) : (
@@ -366,7 +376,7 @@ function PlanGrid({ plans, meId }: { plans: PlanView[]; meId: string }) {
                 <div>
                   <div className="disp text-[17px] font-extrabold">{p.title}</div>
                   <div className="mono mt-0.5 text-[11px] text-muted">
-                    {dayLabel(p.date).toUpperCase()} {p.start_time ? `· ${timeLabel(p.start_time)}` : "· TIME TBC"} {p.location ? `· ${p.location}` : ""}
+                    {dayLabel(p.date).toUpperCase()} {p.start_time ? `· ${timeLabel(p.date, p.start_time)}` : "· TIME TBC"} {p.location ? `· ${p.location}` : ""}
                   </div>
                 </div>
                 <CatPill icon={c.icon} label={c.label} />

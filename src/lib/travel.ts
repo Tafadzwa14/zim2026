@@ -58,11 +58,17 @@ export function currentLeg(legs: FlightLeg[], now: Date = new Date()): FlightLeg
   return legs.find((l) => l.status === "air") ?? legs.find((l) => !flown(l)) ?? null;
 }
 
-/** Whether a trip starts or ends at Harare, ignoring times. */
+/**
+ * Whether a trip visits Harare at all, ignoring times. A round trip flies into
+ * HRE mid-itinerary and back out again, so checking only the first origin and
+ * last destination (both home airports) would wrongly read as "never touches
+ * Harare" and drop the trip from the hub entirely. Any leg landing at or
+ * leaving HRE counts.
+ */
 export function touchesHarare(t: TravelView): boolean {
-  const legs = orderedLegs(t);
-  if (!legs.length) return false;
-  return iata(legs[0].origin_airport) === HARARE || iata(legs[legs.length - 1].destination_airport) === HARARE;
+  return orderedLegs(t).some(
+    (l) => iata(l.origin_airport) === HARARE || iata(l.destination_airport) === HARARE,
+  );
 }
 
 /** A pickup is someone landing at HRE; a dropoff is someone flying out of it. */
@@ -85,34 +91,40 @@ export interface AirportRun {
 }
 
 /**
- * The airport runs a single trip generates. A return trip can yield both. Each
- * run is derived from its own leg, landed or not; use {@link runIsPast} to work
- * out what is behind us.
+ * The airport runs a trip generates: a pickup for every leg that lands at
+ * Harare and a drop-off for every leg that leaves it.
+ *
+ * This reads every leg, not just the two ends, because a whole return journey
+ * is usually kept as one group with Harare in the middle (MEL to HRE, then HRE
+ * back to MEL), so the first origin and last destination are both the home
+ * airport. Reading only the ends found no runs at all for exactly the trips
+ * that need them. A side trip out of Harare and back adds another pair, which
+ * is also correct: each one is a real car journey.
+ *
+ * Each run is derived from its own leg, landed or not; use {@link runIsPast} to
+ * work out what is behind us.
  */
 export function airportRunsFor(t: TravelView): AirportRun[] {
-  const legs = orderedLegs(t);
-  if (!legs.length) return [];
   const runs: AirportRun[] = [];
 
-  const last = legs[legs.length - 1];
-  if (iata(last.destination_airport) === HARARE) {
-    const hreIso = legArrival(last);
-    if (hreIso) {
-      runs.push({
-        id: `${t.id}:arr`, tripId: t.id, kind: "pickup", hreIso,
-        cancelled: last.status === "cancelled", leg: last, trip: t,
-      });
+  for (const leg of orderedLegs(t)) {
+    if (iata(leg.destination_airport) === HARARE) {
+      const hreIso = legArrival(leg);
+      if (hreIso) {
+        runs.push({
+          id: `${t.id}:${leg.id}:arr`, tripId: t.id, kind: "pickup", hreIso,
+          cancelled: leg.status === "cancelled", leg, trip: t,
+        });
+      }
     }
-  }
-
-  const first = legs[0];
-  if (iata(first.origin_airport) === HARARE) {
-    const hreIso = legDeparture(first);
-    if (hreIso) {
-      runs.push({
-        id: `${t.id}:dep`, tripId: t.id, kind: "dropoff", hreIso,
-        cancelled: first.status === "cancelled", leg: first, trip: t,
-      });
+    if (iata(leg.origin_airport) === HARARE) {
+      const hreIso = legDeparture(leg);
+      if (hreIso) {
+        runs.push({
+          id: `${t.id}:${leg.id}:dep`, tripId: t.id, kind: "dropoff", hreIso,
+          cancelled: leg.status === "cancelled", leg, trip: t,
+        });
+      }
     }
   }
 
