@@ -155,7 +155,12 @@ export function tripInputToIso(v: string): string | null {
  * so the offset is fixed, as in {@link tripInputToIso}.
  */
 export function tripInstant(date: string, time?: string | null): string {
-  return `${date}T${time ?? "00:00"}:00+02:00`;
+  // Accept both `HH:mm` (from forms) and `HH:mm:ss` (Postgres `time` columns
+  // hand back seconds). Taking hour and minute and re-adding seconds ourselves
+  // keeps the output a valid ISO instant either way; appending `:00` blindly
+  // turned "18:00:00" into "18:00:00:00", an invalid date that blanked the page.
+  const [h = "00", m = "00"] = (time ?? "00:00").split(":");
+  return `${date}T${h.padStart(2, "0")}:${m.padStart(2, "0")}:00+02:00`;
 }
 
 /**
