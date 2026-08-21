@@ -150,8 +150,11 @@ export interface NewPhotoInput {
 
 export type ClaimResult = { ok: true } | { ok: false; claimedBy: string | null };
 
-/** A roster row for the admin panel: public fields plus whether they've claimed. */
-export type RosterUser = PublicUser & { claimed: boolean };
+/**
+ * A roster row for the admin panel: public fields, whether they've claimed, and
+ * their phone number. The one admin-facing projection of a user.
+ */
+export type RosterUser = PublicUser & { claimed: boolean; phone_number: string | null };
 
 export interface NewInfoInput {
   category: string;
@@ -188,6 +191,9 @@ export interface Repo {
   requestPinReset(username: string): Promise<boolean>;
   setUserRoles(id: string, roles: string[]): Promise<void>;
   setUserLocation(id: string, stayingAt: string | null): Promise<void>;
+  /** Admin-only: phone numbers keyed by user id. Callers MUST gate on is_admin. */
+  listPhoneNumbers(): Promise<Record<string, string | null>>;
+  setUserPhone(id: string, phone: string | null): Promise<void>;
   /** Self-serve: persist a person's UI preferences (home layout). */
   setUserPrefs(id: string, prefs: UserPrefs): Promise<void>;
   deleteUser(id: string): Promise<void>;

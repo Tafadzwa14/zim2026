@@ -46,8 +46,9 @@ const nowIso = () => new Date().toISOString();
 const uid = () => globalThis.crypto.randomUUID();
 
 function toPublic(u: User): PublicUser {
-  const { pin_hash: _pin, ...rest } = u;
+  const { pin_hash: _pin, phone_number: _phone, ...rest } = u;
   void _pin;
+  void _phone;
   return rest;
 }
 
@@ -110,7 +111,7 @@ class MemoryRepo implements Repo {
     const u: User = {
       id: uid(), name: input.name, username: input.username, emoji: input.emoji,
       pin_hash: input.pinHash, is_admin: input.is_admin ?? false, status: input.status ?? "here",
-      roles: [], staying_at: null, pin_reset_requested: false, prefs: {},
+      roles: [], staying_at: null, pin_reset_requested: false, phone_number: null, prefs: {},
       created_at: nowIso(), updated_at: nowIso(),
     };
     this.d.users.push(u);
@@ -127,7 +128,7 @@ class MemoryRepo implements Repo {
   }
   async listRoster(): Promise<RosterUser[]> {
     return this.d.users
-      .map((u) => ({ ...toPublic(u), claimed: u.pin_hash.includes(":") }))
+      .map((u) => ({ ...toPublic(u), claimed: u.pin_hash.includes(":"), phone_number: u.phone_number ?? null }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }
   async resetUserPin(id: string) {
@@ -147,6 +148,15 @@ class MemoryRepo implements Repo {
   async setUserLocation(id: string, stayingAt: string | null) {
     const u = this.d.users.find((x) => x.id === id);
     if (u) { u.staying_at = stayingAt; u.updated_at = nowIso(); }
+  }
+  async listPhoneNumbers(): Promise<Record<string, string | null>> {
+    const out: Record<string, string | null> = {};
+    this.d.users.forEach((u) => (out[u.id] = u.phone_number ?? null));
+    return out;
+  }
+  async setUserPhone(id: string, phone: string | null) {
+    const u = this.d.users.find((x) => x.id === id);
+    if (u) { u.phone_number = phone; u.updated_at = nowIso(); }
   }
   async setUserPrefs(id: string, prefs: import("@/lib/types").UserPrefs) {
     const u = this.d.users.find((x) => x.id === id);

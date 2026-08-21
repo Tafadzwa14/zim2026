@@ -34,14 +34,12 @@ export function AppFrame({
   const [sheet, setSheet] = useState<SheetKind>(null);
   const active = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
 
-  // Family is admin-only; non-admins get Info in that bottom-nav slot instead.
+  // Info carries the family directory plus the important numbers, for everyone.
   const bottomNav = [
     { href: "/", icon: "🏠", label: "Home" },
     { href: "/calendar", icon: "📅", label: "Calendar" },
     { href: "/flights", icon: "✈️", label: "Flights" },
-    user.is_admin
-      ? { href: "/family", icon: "👥", label: "Family" }
-      : { href: "/info", icon: "ℹ️", label: "Info" },
+    { href: "/info", icon: "ℹ️", label: "Info" },
     { href: "/more", icon: "☰", label: "More" },
   ];
 
@@ -49,11 +47,10 @@ export function AppFrame({
     { href: "/", icon: "🏠", label: "Command centre" },
     { href: "/calendar", icon: "📅", label: "Calendar & plans" },
     { href: "/flights", icon: "✈️", label: "Flights", badge: counts.pickups },
-    ...(user.is_admin ? [{ href: "/family", icon: "👥", label: "Family" }] : []),
     { href: "/shopping", icon: "🛒", label: "Shopping", badge: counts.shopping },
     { href: "/tasks", icon: "✅", label: "Tasks", badge: counts.tasks },
     { href: "/photos", icon: "📷", label: "Photos" },
-    { href: "/info", icon: "ℹ️", label: "Important info" },
+    { href: "/info", icon: "ℹ️", label: "Info" },
     { href: "/activity", icon: "🔔", label: "Activity" },
     ...(user.is_admin ? [{ href: "/admin", icon: "🛡️", label: "Admin" }] : []),
   ];

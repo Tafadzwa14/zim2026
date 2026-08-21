@@ -10,14 +10,13 @@ export type Surface = "mobile" | "desktop";
 
 /** Display metadata for every customisable home widget. */
 export const WIDGET_META: Record<string, { label: string; icon: string; hint?: string }> = {
+  "my-flight": { label: "My flight", icon: "🎫", hint: "Your flight, leg by leg" },
   "in-the-air": { label: "In the air", icon: "✈️", hint: "Live flights currently airborne" },
-  "arriving-today": { label: "Arriving today", icon: "🛬", hint: "Flights landing today" },
-  "arrivals": { label: "Arrivals board", icon: "🛫", hint: "All upcoming arrivals" },
-  "coming-next": { label: "Coming next", icon: "📅", hint: "The next few arrivals" },
+  "airport-runs": { label: "Airport runs", icon: "🚗", hint: "Harare pickups and drop-offs" },
   "coming-up": { label: "Coming up", icon: "🗓️", hint: "The next few days" },
   "today": { label: "Today", icon: "🌤️", hint: "What's happening today" },
-  "whos-where": { label: "Who's where", icon: "🏡", hint: "Who's in Zimbabwe and where they're staying" },
-  "airport-pickups": { label: "Airport pickups", icon: "🚗", hint: "Runs that need a driver" },
+  "whos-where": { label: "Who's where", icon: "🏡", hint: "Who is here and where they are staying" },
+  "my-tasks": { label: "My tasks", icon: "☑️", hint: "Tasks that are on you" },
   "tonight": { label: "Tonight", icon: "🍲", hint: "Tonight's dinner plan" },
   "pinned": { label: "Pinned notice", icon: "📢", hint: "The current pinned announcement" },
   "shopping": { label: "Shopping", icon: "🛒", hint: "Open shopping list items" },
@@ -33,9 +32,12 @@ export const WIDGET_META: Record<string, { label: string; icon: string; hint?: s
  * Tasks, Activity, Info) that the compact mobile home does not.
  */
 export const DEFAULT_LAYOUT: Record<Surface, string[]> = {
-  mobile: ["family-photos", "in-the-air", "arriving-today", "whos-where", "coming-next", "tonight", "pinned"],
+  mobile: [
+    "my-flight", "family-photos", "in-the-air", "airport-runs", "whos-where",
+    "my-tasks", "tonight", "pinned",
+  ],
   desktop: [
-    "today", "in-the-air", "coming-up", "arrivals", "whos-where", "airport-pickups",
+    "today", "my-flight", "in-the-air", "coming-up", "airport-runs", "whos-where",
     "family-photos", "shopping", "tasks", "important-info",
   ],
 };
@@ -61,11 +63,19 @@ export interface ResolvedWidget {
  * - applies their hidden set.
  * The result is the full widget list in render order; filter by `visible` to
  * render, or use the whole list to drive the editor.
+ *
+ * Those first three rules are also what makes retiring and adding widget ids
+ * safe with no data migration: a saved order is filtered down to the ids still
+ * in the defaults (so retired ids simply fall away), and any default the person
+ * has never seen is appended, so a new card shows up at the end of their home
+ * with their own arrangement and hidden set left alone.
  */
 export function resolveLayout(surface: Surface, saved?: SurfaceLayout): ResolvedWidget[] {
   const base = DEFAULT_LAYOUT[surface];
   const valid = new Set(base);
-  const savedOrder = (saved?.order ?? []).filter((id) => valid.has(id));
+  // De-duplicated as well as filtered: `prefs` is a raw JSON column, so a
+  // repeated id would otherwise render the same card twice with a clashing key.
+  const savedOrder = [...new Set((saved?.order ?? []).filter((id) => valid.has(id)))];
   const seen = new Set(savedOrder);
   const order = [...savedOrder, ...base.filter((id) => !seen.has(id))];
   const hidden = new Set(saved?.hidden ?? []);

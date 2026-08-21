@@ -47,6 +47,8 @@ export interface User {
   staying_at: string | null;
   /** Set when the person asks an admin to reset their PIN; cleared on reset. */
   pin_reset_requested: boolean;
+  /** Admin-only. Never exposed publicly; kept off `users_public` and off {@link PublicUser}. */
+  phone_number: string | null;
   /** UI preferences (customisable home layout). */
   prefs: UserPrefs;
   created_at: string;
@@ -62,8 +64,8 @@ export const ROLES: { slug: Role; label: string; emoji: string }[] = [
   { slug: "coordinator", label: "Coordinator", emoji: "📋" },
 ];
 
-/** Public projection of a user — never includes pin_hash. */
-export type PublicUser = Omit<User, "pin_hash">;
+/** Public projection of a user; never includes pin_hash or phone_number. */
+export type PublicUser = Omit<User, "pin_hash" | "phone_number">;
 
 export interface Plan {
   id: string;

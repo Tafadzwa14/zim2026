@@ -24,6 +24,9 @@ export function WorldClocks({
   const [now, setNow] = useState<Date | null>(null);
 
   useEffect(() => {
+    // Hydration-safe clock: `now` stays null on the server so no timestamp lands
+    // in the HTML, then the first client render fills it in here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setNow(new Date());
     const id = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(id);

@@ -1,15 +1,18 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { airportZone } from "@/lib/airports";
+import { cn } from "@/lib/cn";
 import type { Dashboard } from "@/lib/dashboard";
-import { categoryOf, GOGO_BIRTHDAY } from "@/lib/display";
-import { fmtDayShortUpper, fmtTime, fmtTime24, timeAgo, tripDateOf } from "@/lib/format";
+import { categoryOf, flightStatusMeta, GOGO_BIRTHDAY } from "@/lib/display";
+import { durationLabel, fmtDayShortIn, fmtDayShortUpper, fmtTime, fmtTime24, fmtTimeIn, fmtZoneLabel, minutesBetween, timeAgo, tripDateOf } from "@/lib/format";
+import { currentLeg, legArrival, legDeparture, orderedLegs, type AirportRun, type AirportRunKind } from "@/lib/travel";
 import { FlightCard } from "@/components/flight-card";
-import { LiveDot, SectionHeader } from "@/components/ui";
+import { List, LiveDot, SectionHeader } from "@/components/ui";
 import { PickupControl, ShoppingItemRow, TaskItemRow } from "@/components/interactive";
 import { PhotoCarousel } from "@/components/photo-gallery";
 import { Dismissable } from "@/components/dismissable";
 import type { PhotoView, TravelView } from "@/lib/repo/types";
-import type { PublicUser } from "@/lib/types";
+import type { FlightLeg, PublicUser } from "@/lib/types";
 
 /**
  * Everything a widget needs to render, computed once by the home page and
@@ -19,8 +22,12 @@ import type { PublicUser } from "@/lib/types";
 export interface HomeCtx {
   d: Dashboard;
   me: PublicUser;
-  /** Every group airborne right now — can be more than one at the same time. */
+  /** Every group with a leg in the air right now; more than one can be. */
   activeFlights: TravelView[];
+  /** The viewer's own trip while it still has a leg to fly, else null. */
+  myFlight: TravelView | null;
+  /** The viewer's open tasks, already sorted soonest due first. */
+  myTasks: Dashboard["tasks"];
   todayPlans: Dashboard["plans"];
   comingUp: { date: string; icon: string; title: string; href: string }[];
   infoSummary: { category: string; icon: string }[];
@@ -28,6 +35,31 @@ export interface HomeCtx {
 }
 
 interface CalEv { icon: string; title: string; date: string; time: string | null; href: string }
+
+/** How each direction of airport run reads: the label, its emoji and its verb. */
+const RUN_META: Record<AirportRunKind, { label: string; emoji: string; verb: string }> = {
+  pickup: { label: "Pickup", emoji: "🛬", verb: "lands" },
+  dropoff: { label: "Drop-off", emoji: "🛫", verb: "leaves" },
+};
+
+/** The travellers' emojis for a trip, falling back to a plane for an empty group. */
+function crew(t: TravelView): string {
+  return t.members.map((m) => m.emoji).join(" ") || "✈️";
+}
+
+/**
+ * The run to lead with on a banner or stat tile: the soonest live one. A
+ * cancelled run only gets the spot when that is genuinely all there is, and
+ * whatever reads this must then say cancelled rather than imply a car is going.
+ */
+function heroRun(d: Dashboard): AirportRun | null {
+  return d.runsAhead.find((r) => !r.cancelled) ?? d.runsAhead[0] ?? null;
+}
+
+/** The leg a trip has in the air right now, if any. `activeLeg` can't be trusted for this. */
+export function airborneLeg(t: TravelView): FlightLeg | null {
+  return orderedLegs(t).find((l) => l.status === "air") ?? null;
+}
 
 /** The soonest thing on the calendar (plans + arrivals + wedding), from today on. */
 function nextEvent(d: Dashboard): CalEv | null {
@@ -76,19 +108,29 @@ function FlightBanner({ href, emoji, eyebrow, headline, sub }: { href: string; e
 }
 
 /**
- * Hero banner keyed off the calendar, not the viewer's location:
- * the next airport run (next arrival + flight + whether a driver is still
- * needed), falling back to the next calendar event.
+ * Hero banner keyed off the calendar, not the viewer's location: the next
+ * airport run in either direction (who, which flight, the Harare time, and
+ * whether a driver is still needed), falling back to the next calendar event.
  */
 export function MyBanner({ d }: { d: Dashboard }) {
-  // The next airport run, straight from the travel calendar.
-  const next = d.arrivingToday[0] ?? d.comingNext[0] ?? null;
-  if (next) {
-    const soonest = Boolean(d.arrivingToday[0]);
-    const leg = next.activeLeg;
-    const needsDriver = Boolean(next.pickup?.requested && !next.driver);
-    const sub = [leg?.flight_number, `arrives ${soonest ? fmtTime(next.arrivalIso) : fmtDayShortUpper(next.arrivalIso)}`, needsDriver ? "driver needed" : null].filter(Boolean).join(" · ");
-    return <FlightBanner href={`/flights/${next.id}`} emoji="🛬" eyebrow={soonest ? "Next airport run · today" : `Next airport run · ${fmtDayShortUpper(next.arrivalIso)}`} headline={`${next.members[0]?.emoji ?? "✈️"} ${next.title}`} sub={sub} />;
+  // The next run to or from Harare airport that is still ahead of us.
+  const run = heroRun(d);
+  if (run) {
+    const m = RUN_META[run.kind];
+    const today = tripDateOf(run.hreIso) === d.today;
+    const when = today ? "today" : fmtDayShortUpper(run.hreIso);
+    // A drop-off has no pickup record of its own, so only a pickup can be short
+    // a driver, and a cancelled flight needs nobody.
+    const needsDriver = !run.cancelled && run.kind === "pickup" && Boolean(run.trip.pickup?.requested && !run.trip.driver);
+    const eyebrow = run.cancelled
+      ? `${m.label} cancelled · ${when}`
+      : run.kind === "pickup"
+        ? `Next airport pickup · ${when}`
+        : `Airport drop-off · ${when}`;
+    const sub = run.cancelled
+      ? `${run.leg.flight_number} · flight cancelled`
+      : [run.leg.flight_number, `${m.verb} ${fmtTime(run.hreIso)}`, needsDriver ? "driver needed" : null].filter(Boolean).join(" · ");
+    return <FlightBanner href={`/flights/${run.tripId}`} emoji={m.emoji} eyebrow={eyebrow} headline={`${crew(run.trip)} ${run.trip.title}`} sub={sub} />;
   }
 
   // Nothing flight-related to surface — fall back to the next calendar event.
@@ -106,15 +148,19 @@ function FlightStatTile({ href, eyebrow, value, sub }: { href: string; eyebrow: 
   );
 }
 
-/** Desktop counterpart of MyBanner — the next airport run, compact stat-tile shape. */
+/** Desktop counterpart of MyBanner: the next airport run, compact stat-tile shape. */
 export function MyStatTile({ d }: { d: Dashboard }) {
-  const next = d.arrivingToday[0] ?? d.comingNext[0] ?? null;
-  if (next) {
-    const soonest = Boolean(d.arrivingToday[0]);
-    const needsDriver = Boolean(next.pickup?.requested && !next.driver);
-    const value = soonest ? fmtTime(next.arrivalIso) : fmtDayShortUpper(next.arrivalIso);
-    const sub = needsDriver ? `${next.title} · driver needed` : `${next.members[0]?.emoji ?? "✈️"} ${next.title}`;
-    return <FlightStatTile href={`/flights/${next.id}`} eyebrow={soonest ? "🛬 Airport run · today" : "🛬 Next airport run"} value={value} sub={sub} />;
+  const run = heroRun(d);
+  if (run) {
+    const m = RUN_META[run.kind];
+    const today = tripDateOf(run.hreIso) === d.today;
+    const needsDriver = !run.cancelled && run.kind === "pickup" && Boolean(run.trip.pickup?.requested && !run.trip.driver);
+    const value = run.cancelled ? "Cancelled" : today ? fmtTime(run.hreIso) : fmtDayShortUpper(run.hreIso);
+    const sub = needsDriver ? `${run.trip.title} · driver needed` : `${crew(run.trip)} ${run.trip.title}`;
+    const eyebrow = run.cancelled
+      ? `${m.emoji} ${m.label} · ${today ? "today" : fmtDayShortUpper(run.hreIso)}`
+      : today ? `${m.emoji} ${m.label} · today` : `${m.emoji} Next ${m.label.toLowerCase()}`;
+    return <FlightStatTile href={`/flights/${run.tripId}`} eyebrow={eyebrow} value={value} sub={sub} />;
   }
 
   // Fall back to the next calendar event.
@@ -128,26 +174,150 @@ export function MyStatTile({ d }: { d: Dashboard }) {
   );
 }
 
-function ArrivalRow({ t }: { t: TravelView }) {
-  const leg = t.activeLeg;
-  if (!leg) return null;
-  const legs = t.legs.length ? t.legs : [leg];
-  const first = legs[0];
-  const last = legs[legs.length - 1];
-  const stops = legs.length - 1;
-  const air = leg.status === "air";
-  const late = leg.status !== "landed" && (leg.delay_minutes ?? 0) > 0;
+/**
+ * One car run to or from Harare airport. Every time here comes off the run
+ * instant itself, so a flight that lands after midnight reads as the day it
+ * actually lands on. The driver control only appears on a requested pickup that
+ * is still going, since a drop-off has no pickup record behind it and a
+ * cancelled flight has nowhere to drive to.
+ */
+function RunRow({ run, ctx }: { run: AirportRun; ctx: HomeCtx }) {
+  const { d, me } = ctx;
+  const m = RUN_META[run.kind];
+  const t = run.trip;
+  const today = tripDateOf(run.hreIso) === d.today;
+  const showDriver = !run.cancelled && run.kind === "pickup" && Boolean(t.pickup?.requested);
   return (
-    <Link href={`/flights/${t.id}`} className="grid grid-cols-[auto_1fr_auto] items-center gap-3 border-b border-line2 px-4 py-3.5 last:border-0">
-      <span className="text-2xl" aria-hidden>{t.members[0]?.emoji ?? "✈️"}</span>
-      <span>
-        <span className="block text-[15px] font-extrabold">{t.title}</span>
-        <span className="mono block text-[10.5px] text-muted">{first.origin_airport}→{last.destination_airport}{stops > 0 ? ` · ${stops} stop${stops > 1 ? "s" : ""}` : ` · ${leg.flight_number}`}</span>
-      </span>
-      <span className="text-right">
-        <span className="mono block text-[15px] font-semibold">{leg.status === "scheduled" ? fmtDayShortUpper(t.arrivalIso) : fmtTime(t.arrivalIso)}</span>
-        <span className={`mono block text-[9.5px] font-semibold uppercase ${air ? "text-good" : late ? "text-warn" : "text-honey"}`}>{air ? "In air" : leg.status === "landed" ? "Landed" : late ? `${leg.delay_minutes}m late` : "Scheduled"}</span>
-      </span>
+    <div className="border-b border-line2 px-4 py-3.5 last:border-0">
+      <div className="flex items-center gap-3">
+        <span className="text-2xl" aria-hidden>{m.emoji}</span>
+        <Link href={`/flights/${t.id}`} className="min-w-0 flex-1">
+          <span className="mono flex items-center gap-1.5 text-[9.5px] font-bold uppercase tracking-[0.08em] text-honey">
+            {m.label}
+            {run.cancelled && <span className="rounded-full bg-chip px-1.5 py-0.5 text-berry">Cancelled</span>}
+          </span>
+          <span className="block truncate text-[15px] font-extrabold">{crew(t)} {t.title}</span>
+          <span className="mono block text-[10.5px] text-muted">{run.leg.flight_number} · {run.leg.origin_airport}→{run.leg.destination_airport}</span>
+        </Link>
+        <span className="flex-none text-right">
+          <span className="mono block text-[15px] font-semibold">{fmtTime(run.hreIso)}</span>
+          <span className="mono block text-[9.5px] font-semibold uppercase text-muted">{today ? "Today" : fmtDayShortUpper(run.hreIso)}</span>
+        </span>
+      </div>
+      {showDriver && (
+        <div className="mt-2.5 flex items-center gap-2.5 pl-[38px]">
+          <span className="text-lg" aria-hidden>🚗</span>
+          <PickupControl travelId={t.id} driver={t.driver} meId={me.id} isAdmin={me.is_admin} canDrive={me.is_admin || me.roles.includes("driver")} drivers={d.users.filter((u) => u.is_admin || u.roles.includes("driver"))} enRoute={t.pickup?.driver_en_route} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The leg the traveller is on plus where it sits in the journey they will
+ * actually fly. Cancelled legs are dropped first, so a stepper never counts a
+ * hop nobody is taking or greys a pip as flown.
+ */
+function legStep(trip: TravelView) {
+  const legs = orderedLegs(trip).filter((l) => l.status !== "cancelled");
+  const cur = currentLeg(legs);
+  return { legs, cur, idx: cur ? legs.findIndex((l) => l.id === cur.id) : -1 };
+}
+
+/**
+ * An instant read at one end of a leg. Where we know the airport it is that
+ * airport's own clock, matching the flight detail page; where we don't it falls
+ * back to trip time and says so, so a Harare clock is never passed off as local.
+ */
+function endTime(iso: string | null, iata: string): { time: string; day: string; zone: string } {
+  if (!iso || Number.isNaN(new Date(iso).getTime())) return { time: "TBC", day: "", zone: "" };
+  const tz = airportZone(iata);
+  return { time: fmtTimeIn(iso, tz), day: fmtDayShortIn(iso, tz), zone: fmtZoneLabel(iso, tz) };
+}
+
+/**
+ * The viewer's own flight: the leg they're on right now, big, with a stepper
+ * for whatever is left to fly. Renders nothing once every leg has landed.
+ * Each end is shown on its own airport's clock with the zone and the day, so
+ * the card agrees with the ticket and with the flight detail page. Anything the
+ * airline hasn't published yet reads as TBC rather than blank.
+ */
+function MyFlightCard({ trip }: { trip: TravelView }) {
+  const { legs, cur, idx } = legStep(trip);
+  if (!cur) return null;
+  const rest = legs.slice(idx + 1);
+  const dep = legDeparture(cur);
+  const arr = legArrival(cur);
+  const depAt = endTime(dep, cur.origin_airport);
+  const arrAt = endTime(arr, cur.destination_airport);
+  const mins = minutesBetween(dep, arr);
+  const late = cur.status !== "landed" && (cur.delay_minutes ?? 0) > 0;
+  const chips = [
+    cur.terminal_departure ? `Terminal ${cur.terminal_departure}` : null,
+    cur.gate_departure ? `Gate ${cur.gate_departure}` : null,
+    cur.terminal_arrival ? `Arrives T${cur.terminal_arrival}` : null,
+    cur.aircraft_type_code ?? cur.aircraft_type,
+  ].filter(Boolean) as string[];
+
+  return (
+    <Link href={`/flights/${trip.id}`} className="block transition-transform active:scale-[.985]">
+      <div className="relative overflow-hidden rounded-[24px] bg-flight p-[19px] text-white shadow-[0_18px_34px_-20px_rgba(29,23,16,.7)]">
+        <span className="pointer-events-none absolute -right-8 -top-11 h-48 w-48 rounded-full" style={{ background: "var(--flight-radial)" }} />
+        <div className="relative flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <span className="mono text-[18px] font-semibold">{cur.flight_number}</span>
+            <span className="ml-1.5 text-[11px] font-bold uppercase tracking-wide text-[var(--flight-label)]">{cur.airline_name}</span>
+          </div>
+          <span className="mono inline-flex flex-none items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide">
+            {cur.status === "air" && <span className="zc-pulse h-1.5 w-1.5 rounded-full bg-honey2" />}
+            {flightStatusMeta(cur.status).label}
+          </span>
+        </div>
+        <div className="relative mt-3.5 grid grid-cols-[1fr_auto_1fr] items-end gap-2">
+          <div className="min-w-0">
+            <div className="mono text-[28px] font-semibold leading-none">{cur.origin_airport}</div>
+            <div className="mt-1 truncate text-[11px] font-bold text-[var(--flight-label)]">{cur.origin_city}</div>
+            <div className="mono mt-1.5 text-[14px] font-semibold">
+              {depAt.time}
+              {depAt.zone && <span className="ml-1 text-[10px] text-[var(--flight-label)]">{depAt.zone}</span>}
+            </div>
+            {depAt.day && <div className="mono text-[10px] text-[var(--flight-label)]">{depAt.day}</div>}
+          </div>
+          <div className="flex flex-col items-center gap-1 pb-1 text-[var(--flight-label)]">
+            <span aria-hidden>✈</span>
+            {mins != null && mins > 0 && <span className="mono text-[10px] font-semibold">{durationLabel(mins)}</span>}
+          </div>
+          <div className="min-w-0 text-right">
+            <div className="mono text-[28px] font-semibold leading-none">{cur.destination_airport}</div>
+            <div className="mt-1 truncate text-[11px] font-bold text-[var(--flight-label)]">{cur.destination_city}</div>
+            <div className="mono mt-1.5 text-[14px] font-semibold">
+              {arrAt.time}
+              {arrAt.zone && <span className="ml-1 text-[10px] text-[var(--flight-label)]">{arrAt.zone}</span>}
+            </div>
+            {arrAt.day && <div className="mono text-[10px] text-[var(--flight-label)]">{arrAt.day}</div>}
+          </div>
+        </div>
+        {(chips.length > 0 || late) && (
+          <div className="mono relative mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-white/10 pt-2.5 text-[11px] text-[var(--flight-label)]">
+            {late && <span className="text-honey2">{cur.delay_minutes} min late</span>}
+            {chips.map((c) => <span key={c}>{c}</span>)}
+          </div>
+        )}
+        <div className="relative mt-3 flex items-center gap-2.5 border-t border-white/10 pt-3">
+          <span className="mono flex-none text-[10px] font-bold uppercase tracking-wide text-[var(--flight-label)]">
+            {legs.length > 1 ? `Leg ${idx + 1} of ${legs.length}` : "Direct"}
+          </span>
+          <span className="flex flex-none items-center gap-1" aria-hidden>
+            {legs.map((l, i) => (
+              <span key={l.id} className={cn("h-1.5 rounded-full", i === idx ? "w-6 bg-honey2" : i < idx ? "w-3.5 bg-white/35" : "w-3.5 bg-white/15")} />
+            ))}
+          </span>
+          <span className="mono ml-auto truncate text-[10.5px] font-semibold text-[var(--flight-label)]">
+            {rest.length ? `Then ${rest.map((l) => l.destination_airport).join(" › ")}` : "Last hop"}
+          </span>
+        </div>
+      </div>
     </Link>
   );
 }
@@ -198,7 +368,7 @@ export function NeedsMe({ items, className }: { items: Nudge[]; className?: stri
 
 function PersonChip({ u }: { u: PublicUser }) {
   return (
-    <Link href="/family" className="zc-chip">
+    <Link href="/info" className="zc-chip">
       <span className="text-lg" aria-hidden>{u.emoji}</span>
       <span className="flex flex-col leading-tight">
         <span>{u.name}</span>
@@ -222,7 +392,7 @@ function WhosHere({ here }: { here: PublicUser[] }) {
     return (
       <div className="flex flex-wrap gap-2">
         {here.slice(0, 4).map((u) => <PersonChip key={u.id} u={u} />)}
-        {here.length > 4 && <Link href="/family" className="self-center text-[13px] font-extrabold text-muted">+{here.length - 4} more</Link>}
+        {here.length > 4 && <Link href="/info" className="self-center text-[13px] font-extrabold text-muted">+{here.length - 4} more</Link>}
       </div>
     );
   }
@@ -314,26 +484,36 @@ export function renderMobileWidget(id: string, ctx: HomeCtx): ReactNode {
     case "in-the-air":
       return ctx.activeFlights.length ? (
         <section>
-          <SectionHeader meta={<><LiveDot /> {ctx.activeFlights.length > 1 ? `${ctx.activeFlights.length} live` : `updated ${timeAgo(ctx.activeFlights[0].activeLeg!.last_synced_at ?? new Date().toISOString())}`}</>}>In the air</SectionHeader>
+          <SectionHeader meta={<><LiveDot /> {ctx.activeFlights.length > 1 ? `${ctx.activeFlights.length} live` : `updated ${timeAgo(airborneLeg(ctx.activeFlights[0])?.last_synced_at ?? new Date().toISOString())}`}</>}>In the air</SectionHeader>
           <div className="flex flex-col gap-3">{ctx.activeFlights.map((t) => <FlightCard key={t.id} travel={t} full />)}</div>
         </section>
       ) : null;
 
-    case "arriving-today":
+    case "my-flight":
+      return ctx.myFlight ? (
+        <section>
+          <SectionHeader>My flight</SectionHeader>
+          <MyFlightCard trip={ctx.myFlight} />
+        </section>
+      ) : null;
+
+    case "airport-runs": {
+      const runs = d.runsAhead;
       return (
         <section>
-          <SectionHeader>Arriving today</SectionHeader>
-          {d.arrivingToday.length ? (
-            <div className="zc-card overflow-hidden p-0">{d.arrivingToday.map((t) => <ArrivalRow key={t.id} t={t} />)}</div>
+          <SectionHeader meta={<Link href="/flights" className="text-honey">See all ›</Link>}>Airport runs</SectionHeader>
+          {runs.length ? (
+            <div className="zc-card overflow-hidden p-0">{runs.slice(0, 4).map((r) => <RunRow key={r.id} run={r} ctx={ctx} />)}</div>
           ) : (
             <div className="zc-card px-6 py-7 text-center">
-              <div className="text-4xl" aria-hidden>🛬</div>
+              <div className="text-4xl" aria-hidden>🚗</div>
               <div className="disp mt-2 text-lg font-extrabold">Quiet airport day</div>
-              <div className="mt-1 text-sm text-ink2">{d.comingNext[0] ? `Next arrival: ${d.comingNext[0].title} · ${fmtDayShortUpper(d.comingNext[0].arrivalIso)}` : "No arrivals coming up"}</div>
+              <div className="mt-1 text-sm text-ink2">No pickups or drop-offs coming up.</div>
             </div>
           )}
         </section>
       );
+    }
 
     case "whos-where":
       return (
@@ -342,7 +522,7 @@ export function renderMobileWidget(id: string, ctx: HomeCtx): ReactNode {
             <summary className="mt-6 mb-3 flex cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
               <h2 className="disp text-lg font-extrabold">Who&apos;s where</h2>
               <span className="mono ml-auto flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-muted">
-                {d.here.length} in Zimbabwe
+                {d.here.length} here
                 <span className="text-sm transition-transform group-open:rotate-90" aria-hidden>›</span>
               </span>
             </summary>
@@ -351,18 +531,11 @@ export function renderMobileWidget(id: string, ctx: HomeCtx): ReactNode {
         </section>
       );
 
-    case "coming-next":
-      return d.comingNext.length > 0 ? (
+    case "my-tasks":
+      return ctx.myTasks.length ? (
         <section>
-          <SectionHeader>Coming next</SectionHeader>
-          <div className="zc-card overflow-hidden p-0">
-            {d.comingNext.slice(0, 3).map((t) => (
-              <div key={t.id} className="flex items-center gap-3 border-b border-line2 px-4 py-3 last:border-0">
-                <span className="mono flex-none rounded-lg bg-ink px-2.5 py-1 text-[11.5px] font-semibold text-paper">{fmtDayShortUpper(t.arrivalIso)}</span>
-                <span className="text-[15px] font-extrabold">{t.members[0]?.emoji ?? "✈️"} {t.title}</span>
-              </div>
-            ))}
-          </div>
+          <SectionHeader meta={<Link href="/tasks" className="text-honey">See all ›</Link>}>My tasks</SectionHeader>
+          <List>{ctx.myTasks.slice(0, 4).map((t) => <TaskItemRow key={t.id} task={t} meId={ctx.me.id} today={d.today} />)}</List>
         </section>
       ) : null;
 
@@ -408,18 +581,32 @@ export function renderDesktopWidget(id: string, ctx: HomeCtx): ReactNode {
         </Panel>
       ) : null;
 
-    case "today":
+    case "today": {
+      const w = d.weather;
       return (
         <Panel title="Today" meta="What's happening">
-          {d.pinned || d.arrivingToday.length || ctx.todayPlans.length ? (
+          {w || d.pinned || d.runsToday.length || ctx.todayPlans.length ? (
             <div>
               {d.pinned && <EventRow icon="📢" title={d.pinned.title} lead="Now" />}
-              {d.arrivingToday.map((t) => <EventRow key={t.id} icon="✈️" title={`${t.title} arrive`} lead={fmtTime(t.arrivalIso)} href={`/flights/${t.id}`} />)}
-              {ctx.todayPlans.map((p) => <EventRow key={p.id} icon={categoryOf(p.category).icon} title={p.title} lead={p.start_time ? fmtTime(`${p.date}T${p.start_time}:00+02:00`) : "—"} href={`/plans/${p.id}`} />)}
+              {w && <EventRow icon={w.emoji} title={`${w.label} · ${w.min}°–${w.max}°`} lead="Harare" />}
+              {d.runsToday.map((r) => <EventRow key={r.id} icon={RUN_META[r.kind].emoji} title={`${RUN_META[r.kind].label} · ${r.trip.title}`} lead={fmtTime(r.hreIso)} href={`/flights/${r.tripId}`} />)}
+              {ctx.todayPlans.map((p) => <EventRow key={p.id} icon={categoryOf(p.category).icon} title={p.title} lead={p.start_time ? fmtTime(`${p.date}T${p.start_time}:00+02:00`) : "All day"} href={`/plans/${p.id}`} />)}
             </div>
           ) : <PanelEmpty emoji="🌤️" text="Nothing major today" />}
         </Panel>
       );
+    }
+
+    case "my-flight": {
+      if (!ctx.myFlight) return null;
+      // The card carries the stepper itself, so the meta names the trip instead.
+      if (!legStep(ctx.myFlight).cur) return null;
+      return (
+        <Panel title="My flight" meta={ctx.myFlight.title} pad>
+          <MyFlightCard trip={ctx.myFlight} />
+        </Panel>
+      );
+    }
 
     case "coming-up":
       return (
@@ -430,7 +617,7 @@ export function renderDesktopWidget(id: string, ctx: HomeCtx): ReactNode {
 
     case "whos-where":
       return (
-        <Panel title="Who's where" meta={`${d.here.length} in Zimbabwe`} collapsible>
+        <Panel title="Who's where" meta={`${d.here.length} here`} collapsible>
           <div className="px-3.5 pb-1"><WhosHere here={d.here} /></div>
         </Panel>
       );
@@ -444,31 +631,14 @@ export function renderDesktopWidget(id: string, ctx: HomeCtx): ReactNode {
         </Panel>
       );
 
-    case "arrivals": {
-      const upcoming = d.travel.filter((t) => t.status !== "arrived");
+    case "airport-runs": {
+      const runs = d.runsAhead;
       return (
-        <Panel title="Arrivals" meta="Flight board">
-          {upcoming.length ? upcoming.map((t) => <ArrivalRow key={t.id} t={t} />) : <PanelEmpty text="No upcoming arrivals" />}
+        <Panel title="Airport runs" meta={`${runs.length} ${runs.length === 1 ? "run" : "runs"}`} link={{ label: "Open flights", href: "/flights" }}>
+          {runs.length ? runs.map((r) => <RunRow key={r.id} run={r} ctx={ctx} />) : <PanelEmpty emoji="🚗" text="No pickups or drop-offs coming up" />}
         </Panel>
       );
     }
-
-    case "airport-pickups":
-      return (
-        <Panel title="Airport pickups" meta={`${d.pickupsOpen.length} runs`}>
-          {d.pickupsOpen.length ? (
-            d.pickupsOpen.map((t) => (
-              <div key={t.id} className="flex items-center gap-3 border-b border-line2 px-4 py-3 last:border-0">
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-extrabold">{t.members.map((m) => m.emoji).join(" ")} {t.title}</div>
-                  <div className="mono text-[10.5px] text-muted">{fmtDayShortUpper(t.arrivalIso)} · {t.activeLeg?.flight_number}</div>
-                </div>
-                <PickupControl travelId={t.id} driver={t.pickup?.driver_user_id ? t.members.find((m) => m.id === t.pickup?.driver_user_id) ?? d.users.find((u) => u.id === t.pickup?.driver_user_id) ?? null : null} meId={me.id} isAdmin={me.is_admin} canDrive={me.is_admin || me.roles.includes("driver")} drivers={d.users.filter((u) => u.is_admin || u.roles.includes("driver"))} enRoute={t.pickup?.driver_en_route} />
-              </div>
-            ))
-          ) : <PanelEmpty emoji="🚗" text="No pickups needed" />}
-        </Panel>
-      );
 
     case "shopping": {
       const open = d.shopping.filter((s) => !s.completed);

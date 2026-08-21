@@ -1,30 +1,29 @@
 import { notFound } from "next/navigation";
 import { getRepo } from "@/lib/repo";
 import { getCurrentUser } from "@/lib/identity";
-import { fmtDateLong, fmtDayShort, fmtTime, timeAgo, tripDateOf } from "@/lib/format";
-import { flightStatusMeta } from "@/lib/display";
+import { dateIn, durationLabel, fmtTimeIn, fmtZoneLabel, minutesBetween, timeAgo, TRIP_TZ } from "@/lib/format";
 import { getArrivalWeather } from "@/lib/weather";
 import { FlightCard } from "@/components/flight-card";
 import { WorldClocks } from "@/components/world-clocks";
+import { ItineraryLeg } from "@/components/itinerary-leg";
 import { airportZone } from "@/lib/airports";
+import { currentLeg, legArrival, legDeparture, orderedLegs } from "@/lib/travel";
 import { BackHeader, PersonChip, SectionHeader } from "@/components/ui";
 import { FlightStatusAdmin, PickupControl, RefreshFlight } from "@/components/interactive";
 import { FlightEditForm } from "@/components/admin";
-import type { FlightLeg } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
-/** Minutes between two ISO instants, or null if either is missing. */
-function minutesBetween(a: string | null | undefined, b: string | null | undefined): number | null {
-  if (!a || !b) return null;
-  const mins = Math.round((new Date(b).getTime() - new Date(a).getTime()) / 60000);
-  return Number.isFinite(mins) ? mins : null;
-}
-
-function durLabel(mins: number): string {
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return h ? `${h}h${m ? ` ${m}m` : ""}` : `${m}m`;
+/** Weekday and date for an instant in a given zone, e.g. `Thursday 24 September`. */
+function dayLongIn(iso: string, tz?: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: tz ?? TRIP_TZ,
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  }).format(d);
 }
 
 export default async function FlightDetail({ params }: { params: Promise<{ id: string }> }) {
@@ -32,26 +31,38 @@ export default async function FlightDetail({ params }: { params: Promise<{ id: s
   const [t, me, users] = await Promise.all([getRepo().getTravel(id), getCurrentUser(), getRepo().listUsers()]);
   if (!t || !me) return notFound();
   const drivers = users.filter((u) => u.is_admin || u.roles.includes("driver"));
-  const active = t.activeLeg;
-  if (!active) return notFound();
-  const legs = t.legs.length ? t.legs : [active];
+  const legs = orderedLegs(t);
+  if (!legs.length) return notFound();
+  // The leg they're on right now, and the leg the page speaks from: once every
+  // leg has landed there's no current one, so fall back to the last.
+  const cur = currentLeg(legs);
   const finalLeg = legs[legs.length - 1];
+  const focus = cur ?? finalLeg;
   const multi = legs.length > 1;
   const driver = t.driver;
-  // Arrival = the journey's final destination, not whichever leg is active now.
-  const arr = finalLeg.estimated_arrival ?? finalLeg.scheduled_arrival;
+  // Arrival = the journey's final destination, not whichever leg is active now,
+  // and the best-known instant so a leg that landed early reads the same here
+  // as it does on its itinerary card.
+  const arr = legArrival(finalLeg);
+  // Read the arrival in the destination airport's own zone, like the itinerary
+  // cards do. An airport we don't hold falls back to trip time, said plainly.
+  const arrZone = airportZone(finalLeg.destination_airport);
+  const arrZoneLabel = fmtZoneLabel(arr, arrZone);
+  const arrZoneNote = arrZone ? `${finalLeg.destination_airport} local time` : "trip time";
 
   // "Current airport" for the world clocks: where the traveller is (or is
   // heading). Origin while waiting/boarding, destination once airborne or landed.
-  const atArrivalEnd = active.status === "air" || active.status === "landed";
-  const clockAirport = atArrivalEnd ? active.destination_airport : active.origin_airport;
-  const clockCity = atArrivalEnd ? active.destination_city : active.origin_city;
-  const clockLabel = active.status === "air" ? `Arriving ${clockAirport}` : clockAirport;
-  const weather = arr ? await getArrivalWeather(finalLeg.destination_city, tripDateOf(arr)) : null;
+  const atArrivalEnd = focus.status === "air" || focus.status === "landed";
+  const clockAirport = atArrivalEnd ? focus.destination_airport : focus.origin_airport;
+  const clockCity = atArrivalEnd ? focus.destination_city : focus.origin_city;
+  const clockLabel = focus.status === "air" ? `Arriving ${clockAirport}` : clockAirport;
+  // Arrival day means the calendar day where they land, not in Harare: a 6:30 AM
+  // Melbourne landing is still the previous day back home.
+  const weather = arr ? await getArrivalWeather(finalLeg.destination_city, dateIn(arr, arrZone)) : null;
 
   const title = multi
     ? `${legs[0].origin_airport} → ${finalLeg.destination_airport}`
-    : `${active.flight_number} · ${active.airline_name}`;
+    : `${focus.flight_number} · ${focus.airline_name}`;
 
   return (
     <div className="mx-auto max-w-xl px-[18px] lg:max-w-3xl lg:px-8">
@@ -66,24 +77,27 @@ export default async function FlightDetail({ params }: { params: Promise<{ id: s
         />
 
         <div className="mt-3 flex items-center justify-between">
-          <span className="mono text-[11px] text-muted">Updated {timeAgo(active.last_synced_at ?? new Date().toISOString())}</span>
+          <span className="mono text-[11px] text-muted">Updated {timeAgo(focus.last_synced_at ?? new Date().toISOString())}</span>
           <RefreshFlight travelId={t.id} />
         </div>
 
         <SectionHeader meta={multi ? `${legs.length} flights` : undefined}>Itinerary</SectionHeader>
         <div className="flex flex-col gap-2.5">
           {legs.map((leg, i) => {
-            const layover = i > 0 ? minutesBetween(legs[i - 1].scheduled_arrival, leg.scheduled_departure) : null;
+            const previous = i > 0 ? legs[i - 1] : null;
+            // Ground time from the best-known arrival to the best-known departure,
+            // so an estimate or an actual time moves the layover with it.
+            const layover = previous ? minutesBetween(legArrival(previous), legDeparture(leg)) : null;
             return (
               <div key={leg.id}>
                 {layover != null && layover > 0 && (
                   <div className="mono mb-2.5 flex items-center gap-2 px-1 text-[11px] font-semibold text-muted">
                     <span className="h-px flex-1 bg-line" />
-                    🕓 {durLabel(layover)} layover in {leg.origin_city} ({leg.origin_airport})
+                    🕓 {durationLabel(layover)} layover in {leg.origin_city} ({leg.origin_airport})
                     <span className="h-px flex-1 bg-line" />
                   </div>
                 )}
-                <ItineraryLeg leg={leg} index={i} total={legs.length} active={leg.id === active.id && multi} />
+                <ItineraryLeg leg={leg} index={i} total={legs.length} current={multi && leg.id === cur?.id} previous={previous} layoverMins={layover} />
               </div>
             );
           })}
@@ -92,11 +106,14 @@ export default async function FlightDetail({ params }: { params: Promise<{ id: s
         <SectionHeader>Arrival</SectionHeader>
         <div className="zc-card p-4">
           <div className="flex items-baseline justify-between">
-            <div className="disp text-2xl font-extrabold">{fmtTime(arr)}</div>
+            <div className="flex items-baseline gap-1.5">
+              <div className="disp text-2xl font-extrabold">{fmtTimeIn(arr, arrZone) || "TBC"}</div>
+              {arrZoneLabel && <span className="mono text-[11px] font-semibold text-muted">{arrZoneLabel}</span>}
+            </div>
             <div className="mono text-xs text-muted">{finalLeg.destination_airport} · {finalLeg.destination_city}</div>
           </div>
-          <div className="mt-2 text-sm text-ink2">Scheduled {fmtTime(finalLeg.scheduled_arrival)} {finalLeg.delay_minutes && finalLeg.delay_minutes > 0 ? <>· <b className="text-honey">{finalLeg.delay_minutes} min late</b></> : "· on time"}</div>
-          {finalLeg.scheduled_arrival && <div className="mono mt-1 text-xs text-muted">{fmtDateLong(finalLeg.scheduled_arrival)}</div>}
+          <div className="mt-2 text-sm text-ink2">Scheduled {fmtTimeIn(finalLeg.scheduled_arrival, arrZone) || "TBC"} {fmtZoneLabel(finalLeg.scheduled_arrival, arrZone)} {finalLeg.delay_minutes && finalLeg.delay_minutes > 0 ? <>· <b className="text-honey">{finalLeg.delay_minutes} min late</b></> : "· on time"}</div>
+          {arr && <div className="mono mt-1 text-xs text-muted">{dayLongIn(arr, arrZone)} · {arrZoneNote}</div>}
         </div>
 
         {weather && (
@@ -137,49 +154,6 @@ export default async function FlightDetail({ params }: { params: Promise<{ id: s
           </>
         )}
       </div>
-    </div>
-  );
-}
-
-/** One segment of the journey, shown as a self-contained card. */
-function ItineraryLeg({ leg, index, total, active }: { leg: FlightLeg; index: number; total: number; active: boolean }) {
-  const meta = flightStatusMeta(leg.status);
-  const dep = leg.estimated_departure ?? leg.scheduled_departure;
-  const arr = leg.estimated_arrival ?? leg.scheduled_arrival;
-  const late = leg.status !== "landed" && (leg.delay_minutes ?? 0) > 0;
-  const tone =
-    meta.tone === "air" ? "text-good" : meta.tone === "land" ? "text-[#5f86a8]" : meta.tone === "cancel" ? "text-berry" : "text-honey";
-  return (
-    <div className={`zc-card p-4 ${active ? "border-[1.5px] border-honey" : ""}`}>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="mono rounded-md bg-chip px-1.5 py-0.5 text-[10px] font-bold text-muted">{total > 1 ? `Leg ${index + 1}` : "Flight"}</span>
-          <span className="mono text-[14px] font-semibold">{leg.flight_number}</span>
-          <span className="text-[11px] font-bold uppercase tracking-wide text-muted">{leg.airline_name}</span>
-        </div>
-        <span className={`mono text-[10px] font-semibold uppercase ${active ? "text-good" : tone}`}>{leg.status === "air" ? "In air" : meta.label}{late ? ` · ${leg.delay_minutes}m late` : ""}</span>
-      </div>
-      <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-        <div>
-          <div className="mono text-[22px] font-semibold leading-none">{leg.origin_airport}</div>
-          <div className="mt-1 text-[11px] font-bold text-muted">{leg.origin_city}</div>
-          <div className="mono mt-1 text-[12px] font-semibold">{fmtTime(dep)}</div>
-          <div className="mono text-[10px] text-muted">{fmtDayShort(dep)}</div>
-        </div>
-        <span className="text-lg text-muted" aria-hidden>✈</span>
-        <div className="text-right">
-          <div className="mono text-[22px] font-semibold leading-none">{leg.destination_airport}</div>
-          <div className="mt-1 text-[11px] font-bold text-muted">{leg.destination_city}</div>
-          <div className="mono mt-1 text-[12px] font-semibold">{fmtTime(arr)}</div>
-          <div className="mono text-[10px] text-muted">{fmtDayShort(arr)}</div>
-        </div>
-      </div>
-      {(leg.terminal_departure || leg.aircraft_type) && (
-        <div className="mono mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-line2 pt-2.5 text-[11px] text-muted">
-          {leg.terminal_departure && <span>Terminal {leg.terminal_departure}</span>}
-          {leg.aircraft_type && <span>{leg.aircraft_type}</span>}
-        </div>
-      )}
     </div>
   );
 }

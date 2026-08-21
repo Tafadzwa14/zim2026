@@ -96,12 +96,18 @@ export function AddPersonForm() {
 export function RosterRow({ u, meId, places }: { u: RosterUser; meId: string; places: Place[] }) {
   const { run } = useAction();
   const [open, setOpen] = useState(false);
+  const [phone, setPhone] = useState(u.phone_number ?? "");
   const isSelf = u.id === meId;
   const roleLabels = ROLES.filter((r) => u.roles.includes(r.slug));
 
   const toggleRole = (slug: string) => {
     const next = u.roles.includes(slug) ? u.roles.filter((r) => r !== slug) : [...u.roles, slug];
     run(() => actions.adminSetRoles(u.id, next));
+  };
+
+  const savePhone = () => {
+    if (phone.trim() === (u.phone_number ?? "")) return;
+    run(() => actions.adminSetPhone(u.id, phone));
   };
 
   return (
@@ -160,6 +166,20 @@ export function RosterRow({ u, meId, places }: { u: RosterUser; meId: string; pl
               {u.staying_at && !places.some((p) => p.name === u.staying_at) && <option value={u.staying_at}>{u.staying_at} (not in list)</option>}
             </select>
             {places.length === 0 && <p className="mt-1 text-xs text-muted">Add places in the Places tab first.</p>}
+          </div>
+
+          <div>
+            <div className="zc-label">Phone</div>
+            <input
+              type="tel"
+              className="zc-input"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              onBlur={savePhone}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); } }}
+              placeholder="e.g. +263 77 123 4567"
+            />
+            <p className="mt-1 text-xs text-muted">Only admins can see phone numbers.</p>
           </div>
 
           <div className="flex flex-wrap gap-2">

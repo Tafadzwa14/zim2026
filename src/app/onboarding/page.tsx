@@ -9,7 +9,14 @@ export const dynamic = "force-dynamic";
 export default async function OnboardingPage() {
   const user = await getCurrentUser();
   if (user) redirect("/");
-  const roster = await getRepo().listRoster();
+  // Onboarding runs before sign-in, so drop the admin-only phone number here:
+  // RosterUser is assignable to PublicUser, so nothing would flag the extra
+  // field, but it would still ride into the client payload.
+  const roster = (await getRepo().listRoster()).map((u) => {
+    const { phone_number: _phone, ...rest } = u;
+    void _phone;
+    return rest;
+  });
   const pending = roster.filter((u) => !u.claimed);
   const claimed = roster.filter((u) => u.claimed);
   return (

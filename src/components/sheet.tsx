@@ -35,6 +35,9 @@ export function Sheet({
         clearTimeout(t);
       };
     }
+    // Mount-then-animate: the exit has to start from a second render, so setting
+    // state here is the point rather than something to hoist into initial state.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setShown(false);
     const t = setTimeout(() => setMounted(false), 260);
     return () => clearTimeout(t);

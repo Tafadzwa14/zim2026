@@ -160,6 +160,7 @@ function parseItineraryText(text: string): ExtractedItinerary {
 
 /** Drop-in replacement for the AI reader: same signature and return shape. */
 export async function parseItineraryPdfLocal(bytes: Uint8Array, _filename: string): Promise<ExtractedItinerary> {
+  void _filename;
   const pdf = await getDocumentProxy(bytes);
   const { text } = await extractText(pdf, { mergePages: true });
   if (!text || text.replace(/\s/g, "").length < 40) {

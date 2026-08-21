@@ -125,11 +125,14 @@ class SupabaseRepo implements Repo {
     return (data as PublicUser) ?? null;
   }
   async listRoster(): Promise<RosterUser[]> {
-    const { data } = await this.sb.from("users").select(`${USER_COLS},pin_hash`).order("name");
-    return ((data ?? []) as (PublicUser & { pin_hash: string })[]).map(({ pin_hash, ...rest }) => ({
-      ...(rest as PublicUser),
-      claimed: pin_hash.includes(":"),
-    }));
+    const { data } = await this.sb.from("users").select(`${USER_COLS},pin_hash,phone_number`).order("name");
+    return ((data ?? []) as (PublicUser & { pin_hash: string; phone_number: string | null })[]).map(
+      ({ pin_hash, phone_number, ...rest }) => ({
+        ...(rest as PublicUser),
+        claimed: pin_hash.includes(":"),
+        phone_number: phone_number ?? null,
+      }),
+    );
   }
   async resetUserPin(id: string) {
     await this.sb.from("users").update({ pin_hash: PENDING_PIN, pin_reset_requested: false }).eq("id", id);
@@ -143,6 +146,15 @@ class SupabaseRepo implements Repo {
   }
   async setUserLocation(id: string, stayingAt: string | null) {
     await this.sb.from("users").update({ staying_at: stayingAt }).eq("id", id);
+  }
+  async listPhoneNumbers(): Promise<Record<string, string | null>> {
+    const { data } = await this.sb.from("users").select("id,phone_number");
+    const out: Record<string, string | null> = {};
+    ((data ?? []) as { id: string; phone_number: string | null }[]).forEach((u) => (out[u.id] = u.phone_number ?? null));
+    return out;
+  }
+  async setUserPhone(id: string, phone: string | null) {
+    await this.sb.from("users").update({ phone_number: phone }).eq("id", id);
   }
   async setUserPrefs(id: string, prefs: import("@/lib/types").UserPrefs) {
     await this.sb.from("users").update({ prefs }).eq("id", id);

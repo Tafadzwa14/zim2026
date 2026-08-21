@@ -20,7 +20,7 @@ import {
 import { estimateProgress, getFlightPosition, getFlightStatus, searchFlight } from "@/lib/flights";
 import { routeFraction } from "@/lib/flights/geo";
 import { sanitiseLayout, type Surface } from "@/lib/home-layout";
-import type { PlanCategory, UserPrefs } from "@/lib/types";
+import type { FlightStatus, PlanCategory, TravelStatus, UserPrefs } from "@/lib/types";
 
 export type ActionResult<T = unknown> =
   | ({ ok: true; message?: string } & T)
@@ -173,6 +173,19 @@ export async function deletePlan(planId: string): Promise<ActionResult> {
 }
 
 // ============================ travel + flights ============================
+/**
+ * The whole-journey status behind a set of leg statuses: "arrived" only once
+ * every leg has landed or been cancelled, "travelling" while any leg is in the
+ * air, "upcoming" otherwise. Shared by cycleFlightStatus and refreshFlight so
+ * one landed leg never makes a multi-leg trip read as finished.
+ */
+function journeyStatus(statuses: FlightStatus[]): TravelStatus {
+  if (!statuses.length) return "upcoming";
+  if (statuses.every((s) => s === "landed" || s === "cancelled")) return "arrived";
+  if (statuses.some((s) => s === "air")) return "travelling";
+  return "upcoming";
+}
+
 export async function searchFlightAction(flightNumber: string, date: string): Promise<ActionResult<{ results: import("@/lib/flights").FlightSearchResult[] }>> {
   await requireUser();
   const num = (flightNumber || "").trim().toUpperCase();
@@ -195,8 +208,15 @@ export async function createTravel(input: {
   const travellers = [...new Set(input.travellers.length ? input.travellers : [me.id])];
   const names = await Promise.all(travellers.map((id) => repo.getUser(id).then((u) => u?.name ?? "")));
   const title = input.title?.trim() || names.filter(Boolean).join(" & ") || "Travel";
-  const group = await repo.createTravel({ title, travellers, created_by: me.id, pickup: input.pickup, notes: input.notes ?? null, legs: input.legs });
-  await repo.addActivity(me.id, "flight_added", `added flight ${input.legs[0].flight_number}`, { type: "travel", id: group.id });
+  // Store airport codes clean: a pasted " hre" has to match HRE, or the trip
+  // yields no airport run and the pickup never appears.
+  const legs: NewLegInput[] = input.legs.map((l) => ({
+    ...l,
+    origin_airport: l.origin_airport.trim().toUpperCase(),
+    destination_airport: l.destination_airport.trim().toUpperCase(),
+  }));
+  const group = await repo.createTravel({ title, travellers, created_by: me.id, pickup: input.pickup, notes: input.notes ?? null, legs });
+  await repo.addActivity(me.id, "flight_added", `added flight ${legs[0].flight_number}`, { type: "travel", id: group.id });
   if (input.pickup) await repo.addActivity(me.id, "pickup_requested", "requested an airport pickup", { type: "travel", id: group.id });
   refresh();
   return ok({ id: group.id }, "Travel added");
@@ -257,18 +277,22 @@ export async function cycleFlightStatus(travelId: string, legId: string): Promis
   await requireAdmin();
   const repo = getRepo();
   const tg = await repo.getTravel(travelId);
-  const leg = tg?.legs.find((l) => l.id === legId);
+  if (!tg) return fail("Flight not found");
+  const leg = tg.legs.find((l) => l.id === legId);
   if (!leg) return fail("Flight not found");
   const order = ["scheduled", "boarding", "air", "landed"] as const;
   const next = order[(order.indexOf(leg.status as (typeof order)[number]) + 1) % order.length];
   await repo.setLegStatus(legId, next, next === "air" ? 0.5 : next === "landed" ? 1 : 0);
-  if (next === "landed") {
-    await repo.setTravelStatus(travelId, "arrived");
-    for (const m of tg!.members) await repo.setUserStatus(m.id, "here");
-  } else if (next === "air") {
-    await repo.setTravelStatus(travelId, "travelling");
-  } else {
-    await repo.setTravelStatus(travelId, "upcoming");
+  // Judge the whole journey, not the one leg: landing leg 1 of 3 must not mark
+  // the trip arrived and everyone home while they're still in Sydney.
+  const after = await repo.getTravel(travelId);
+  const members = after?.members ?? tg.members;
+  const journey = journeyStatus((after?.legs ?? []).map((l) => l.status));
+  await repo.setTravelStatus(travelId, journey);
+  if (journey === "arrived") {
+    for (const m of members) await repo.setUserStatus(m.id, "here");
+  } else if (journey === "travelling") {
+    for (const m of members) await repo.setUserStatus(m.id, "travelling");
   }
   refresh();
   return ok({}, `Status → ${next}`);
@@ -280,15 +304,15 @@ export async function refreshFlight(travelId: string): Promise<ActionResult> {
   const repo = getRepo();
   const tg = await repo.getTravel(travelId);
   if (!tg) return fail("Flight not found");
-  let landedAll = tg.legs.length > 0;
-  let anyAir = false;
+  // Every leg's status once this refresh is done, whether it came from the
+  // provider or stayed as it was, so the journey test below sees the whole trip.
+  const statuses: FlightStatus[] = [];
   try {
     for (const leg of tg.legs) {
       const date = (leg.scheduled_departure ?? "").slice(0, 10);
       const status = date ? await getFlightStatus(leg.flight_number, date, leg.status === "air") : null;
       if (!status) {
-        if (leg.status !== "landed") landedAll = false;
-        if (leg.status === "air") anyAir = true;
+        statuses.push(leg.status);
         continue;
       }
       const dep = status.departure.actualTime ?? status.departure.estimatedTime ?? status.departure.scheduledTime ?? leg.scheduled_departure;
@@ -327,16 +351,16 @@ export async function refreshFlight(travelId: string): Promise<ActionResult> {
         progress: prog,
         progress_source: progressSource,
       });
-      if (status.status === "air") anyAir = true;
-      if (status.status !== "landed") landedAll = false;
+      statuses.push(status.status);
     }
   } catch {
     return fail("Live flight information is temporarily unavailable");
   }
-  if (landedAll) {
+  const journey = journeyStatus(statuses);
+  if (journey === "arrived") {
     await repo.setTravelStatus(travelId, "arrived");
     for (const m of tg.members) await repo.setUserStatus(m.id, "here");
-  } else if (anyAir) {
+  } else if (journey === "travelling") {
     await repo.setTravelStatus(travelId, "travelling");
     for (const m of tg.members) await repo.setUserStatus(m.id, "travelling");
   }
@@ -577,6 +601,16 @@ export async function adminSetLocation(userId: string, stayingAt: string): Promi
   await getRepo().setUserLocation(userId, v || null);
   refresh();
   return ok({}, "Location updated");
+}
+// Phone numbers are admin-only: set here, read server-side, never sent to the
+// browser for anyone but an admin.
+export async function adminSetPhone(userId: string, phone: string): Promise<ActionResult> {
+  await requireAdmin();
+  const v = phone.trim();
+  if (v && !/^[\d\s+()-]{6,24}$/.test(v)) return fail("That doesn't look like a phone number");
+  await getRepo().setUserPhone(userId, v || null);
+  refresh();
+  return ok({}, v ? "Phone number updated" : "Phone number cleared");
 }
 export async function adminRemovePerson(userId: string): Promise<ActionResult> {
   const me = await requireAdmin();

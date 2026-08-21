@@ -24,12 +24,17 @@ function parts(iso: string, tz = TRIP_TZ) {
   };
 }
 
-export function fmtTime(iso: string | null): string {
+/** Clock time in a given zone, e.g. `9:05 PM`. Defaults to trip time. */
+export function fmtTimeIn(iso: string | null, tz?: string): string {
   if (!iso) return "";
-  const { hour, minute } = parts(iso);
+  const { hour, minute } = parts(iso, tz ?? TRIP_TZ);
   const ap = hour >= 12 ? "PM" : "AM";
   const h = hour % 12 || 12;
   return `${h}:${String(minute).padStart(2, "0")} ${ap}`;
+}
+
+export function fmtTime(iso: string | null): string {
+  return fmtTimeIn(iso);
 }
 
 export function fmtTime24(iso: string | null): string {
@@ -38,13 +43,31 @@ export function fmtTime24(iso: string | null): string {
   return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
-export function fmtDayShort(iso: string | null): string {
+/** Day and month in a given zone, e.g. `12 Sep`. Defaults to trip time. */
+export function fmtDayShortIn(iso: string | null, tz?: string): string {
   if (!iso) return "";
   return new Intl.DateTimeFormat("en-GB", {
-    timeZone: TRIP_TZ,
+    timeZone: tz ?? TRIP_TZ,
     day: "numeric",
     month: "short",
   }).format(new Date(iso));
+}
+
+export function fmtDayShort(iso: string | null): string {
+  return fmtDayShortIn(iso);
+}
+
+/** Short zone name for an instant, e.g. `CAT` or `GMT+11`. "" when unknown. */
+export function fmtZoneLabel(iso: string | null, tz?: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  try {
+    const f = new Intl.DateTimeFormat("en-GB", { timeZone: tz ?? TRIP_TZ, timeZoneName: "short" }).formatToParts(d);
+    return f.find((p) => p.type === "timeZoneName")?.value ?? "";
+  } catch {
+    return "";
+  }
 }
 
 export function fmtDayShortUpper(iso: string | null): string {
@@ -75,10 +98,19 @@ export function tripTodayISO(now: Date = new Date()): string {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
+/**
+ * The YYYY-MM-DD an instant falls on in a given zone. Defaults to trip time.
+ * Use this for anything keyed to the destination's calendar day, such as an
+ * arrival-day forecast: 6:30 AM in Melbourne is the day before in Harare.
+ */
+export function dateIn(iso: string, tz?: string): string {
+  const { year, month, day } = parts(iso, tz ?? TRIP_TZ);
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
 /** The YYYY-MM-DD (trip tz) an instant falls on. */
 export function tripDateOf(iso: string): string {
-  const { year, month, day } = parts(iso);
-  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  return dateIn(iso);
 }
 
 export function isSameTripDay(iso: string, dateStr: string): boolean {
@@ -121,6 +153,24 @@ export function timeAgo(iso: string, now: Date = new Date()): string {
   if (s < 3600) return `${Math.floor(s / 60)} min ago`;
   if (s < 86_400) return `${Math.floor(s / 3600)} hr ago`;
   return `${Math.floor(s / 86_400)} d ago`;
+}
+
+/** Whole minutes from `a` to `b`; null if either is missing or unparseable. */
+export function minutesBetween(a: string | null | undefined, b: string | null | undefined): number | null {
+  if (!a || !b) return null;
+  const ta = new Date(a).getTime();
+  const tb = new Date(b).getTime();
+  if (Number.isNaN(ta) || Number.isNaN(tb)) return null;
+  return Math.round((tb - ta) / 60_000);
+}
+
+/** Minutes as `2h 40m`, `40m` or `3h`. Zero and negatives read as `0m`. */
+export function durationLabel(mins: number): string {
+  if (!Number.isFinite(mins) || mins <= 0) return "0m";
+  const h = Math.floor(mins / 60);
+  const m = Math.round(mins % 60);
+  if (!h) return `${m}m`;
+  return m ? `${h}h ${m}m` : `${h}h`;
 }
 
 /** 0..1 progress estimate from times. Always treated as estimated. */
