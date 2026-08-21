@@ -136,17 +136,25 @@ export function PhotoGallery({ photos, meId, isAdmin }: { photos: PhotoView[]; m
     if (!files.length) return;
     setError(null);
     let done = 0;
-    for (const file of files) {
-      setUploading({ done, total: files.length });
-      const fd = new FormData();
-      fd.append("file", file);
-      if (caption.trim()) fd.append("caption", caption.trim());
-      const res = await actions.uploadPhoto(fd);
-      if (res.ok === false) { setError(res.message); break; }
-      done += 1;
+    try {
+      for (const file of files) {
+        setUploading({ done, total: files.length });
+        const fd = new FormData();
+        fd.append("file", file);
+        if (caption.trim()) fd.append("caption", caption.trim());
+        const res = await actions.uploadPhoto(fd);
+        if (res.ok === false) { setError(res.message); break; }
+        done += 1;
+      }
+    } catch {
+      // The action can reject before it runs (e.g. the request body exceeds the
+      // server-action size limit), which wouldn't come back as a {ok:false}.
+      // Surface it instead of leaving the button stuck on "Uploading…".
+      setError("Couldn't upload that photo — it may be too large, or the connection dropped. Try again.");
+    } finally {
+      setUploading(null);
+      setCaption("");
     }
-    setUploading(null);
-    setCaption("");
   }
 
   return (
