@@ -2,9 +2,10 @@ import "server-only";
 
 import OpenAI from "openai";
 import { serverEnv } from "@/lib/env";
+import { airportLocalToUtcIso } from "@/lib/itinerary-time";
 
 /** One flight segment as read from an itinerary PDF. A layover is just the
- *  next segment. Times are ISO 8601 in the airport's local offset when known. */
+ *  next segment. Times are absolute UTC instants once normalised; see below. */
 export interface ExtractedLeg {
   flight_number: string;
   airline_name: string | null;
@@ -43,8 +44,8 @@ const SCHEMA = {
           origin_city: { type: ["string", "null"] },
           destination_airport: { type: "string", description: "IATA 3-letter code, e.g. HRE" },
           destination_city: { type: ["string", "null"] },
-          scheduled_departure: { type: ["string", "null"], description: "ISO 8601 with the departure airport's UTC offset if determinable" },
-          scheduled_arrival: { type: ["string", "null"], description: "ISO 8601 with the arrival airport's UTC offset if determinable" },
+          scheduled_departure: { type: ["string", "null"], description: "Local departure time at the origin airport as printed, format YYYY-MM-DDTHH:mm, with NO timezone offset — just the wall-clock time and date shown on the itinerary" },
+          scheduled_arrival: { type: ["string", "null"], description: "Local arrival time at the destination airport as printed, format YYYY-MM-DDTHH:mm, with NO timezone offset — just the wall-clock time and date shown on the itinerary" },
           terminal_departure: { type: ["string", "null"] },
           aircraft_type: { type: ["string", "null"] },
         },
@@ -64,7 +65,9 @@ const SCHEMA = {
 const INSTRUCTION =
   "You are reading a flight itinerary or e-ticket. Extract every flight segment in travel order. " +
   "Treat each layover as its own segment (a 3-leg trip has 3 segments). Use IATA 3-letter airport codes. " +
-  "For departure and arrival times, output ISO 8601 and include the local UTC offset of that airport when you can determine it. " +
+  "For departure and arrival times, transcribe the LOCAL wall-clock time shown at each airport exactly as printed, " +
+  "in the format YYYY-MM-DDTHH:mm with NO timezone offset and no 'Z'. Do not convert between timezones and do not " +
+  "add a UTC offset — just copy the date and time as they appear. " +
   "If a value is not present, use null. Never invent flights, airports, or times that are not in the document.";
 
 /**
@@ -94,12 +97,21 @@ export async function parseItineraryPdf(bytes: Uint8Array, filename: string): Pr
   const raw = response.output_text;
   if (!raw) throw new Error("No itinerary data returned");
   const parsed = JSON.parse(raw) as ExtractedItinerary;
-  // Normalise flight numbers so they match the provider's expectations.
-  parsed.legs = (parsed.legs ?? []).map((l) => ({
-    ...l,
-    flight_number: (l.flight_number ?? "").toUpperCase().replace(/\s+/g, ""),
-    origin_airport: (l.origin_airport ?? "").toUpperCase(),
-    destination_airport: (l.destination_airport ?? "").toUpperCase(),
-  }));
+  // Normalise codes, then pin the model's wall-clock times to real UTC instants
+  // ourselves using the airport zone. The model only transcribes the printed
+  // local time; we own the offset, so a wrong or missing offset from the model
+  // can no longer land a time in the DB tagged as UTC.
+  parsed.legs = (parsed.legs ?? []).map((l) => {
+    const origin = (l.origin_airport ?? "").toUpperCase();
+    const destination = (l.destination_airport ?? "").toUpperCase();
+    return {
+      ...l,
+      flight_number: (l.flight_number ?? "").toUpperCase().replace(/\s+/g, ""),
+      origin_airport: origin,
+      destination_airport: destination,
+      scheduled_departure: airportLocalToUtcIso(l.scheduled_departure, origin),
+      scheduled_arrival: airportLocalToUtcIso(l.scheduled_arrival, destination),
+    };
+  });
   return parsed;
 }

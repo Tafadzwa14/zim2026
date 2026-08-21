@@ -3,6 +3,7 @@ import "server-only";
 import { extractText, getDocumentProxy } from "unpdf";
 import type { ExtractedItinerary, ExtractedLeg } from "@/lib/itinerary";
 import { AIRPORTS } from "@/lib/airports";
+import { airportLocalToUtcIso } from "@/lib/itinerary-time";
 
 /**
  * Deterministic, no-AI itinerary reader for Aunt Betty / Flight Centre
@@ -20,10 +21,11 @@ import { AIRPORTS } from "@/lib/airports";
  *   <Airline> - <FLIGHTNO> <aircraft> <class>   (aircraft/class may wrap to the next line)
  */
 
-// Airport timezones (for pinning an absolute instant) and display cities come
-// from the shared table in @/lib/airports. Times on these itineraries are the
-// airport's local wall-clock, so we convert to UTC using the airport's zone;
-// the app then projects to trip time.
+// Times on these itineraries are the airport's local wall-clock. Pinning them
+// to a real UTC instant is delegated to airportLocalToUtcIso, which resolves
+// the airport's zone from the shared @/lib/airports table; the app then
+// projects that instant back to trip time (or the airport's own time) for
+// display. Display cities still come from AIRPORTS here.
 
 // Keyed by the first three letters, lower-cased, so both full ("September")
 // and abbreviated ("Sep", "Sept") month names parse for every month.
@@ -33,33 +35,17 @@ const MONTHS: Record<string, number> = {
 };
 const monthIndex = (name: string): number | undefined => MONTHS[name.slice(0, 3).toLowerCase()];
 
+const pad = (n: number) => String(n).padStart(2, "0");
+/** Parsed wall-clock fields -> naive ISO the shared pinner can read. */
+const naiveIso = (p: { y: number; mo: number; d: number; h: number; mi: number }): string =>
+  `${p.y}-${pad(p.mo + 1)}-${pad(p.d)}T${pad(p.h)}:${pad(p.mi)}`;
+
 const AIRPORTS_LINE = /^([A-Z]{3})\s+-\s+(.+?)\s+([A-Z]{3})\s+-\s+(.+)$/;
 const TERMINAL_LINE = /^Terminal\s+(.+?)\s+Terminal\s+(.+)$/;
 const TIMES_LINE = /(\d{1,2}:\d{2}\s*[AP]M)\s*-\s*([A-Za-z]+,\s*\d{1,2}\s+[A-Za-z]+\s+\d{4}).*?(\d{1,2}:\d{2}\s*[AP]M)\s*-\s*([A-Za-z]+,\s*\d{1,2}\s+[A-Za-z]+\s+\d{4})/;
 const FLIGHT_LINE = /^(.+?)\s+-\s+([A-Z]{2})\s?(\d{1,4})\b(.*)$/;
 const CLASS_RE = /\b((?:Premium\s+)?Economy|Business|First)\s+Class\b.*$/i;
 const AIRFRAME_RE = /(Boeing|Airbus|Embraer|Bombardier|ATR|De Havilland|McDonnell Douglas)[\w .\/-]*$/i;
-
-/** Offset in ms between a UTC instant and how a zone renders it (DST-aware). */
-function offsetMs(date: Date, tz: string): number {
-  const dtf = new Intl.DateTimeFormat("en-US", {
-    timeZone: tz, hourCycle: "h23",
-    year: "numeric", month: "2-digit", day: "2-digit",
-    hour: "2-digit", minute: "2-digit", second: "2-digit",
-  });
-  const p: Record<string, string> = {};
-  for (const part of dtf.formatToParts(date)) p[part.type] = part.value;
-  const asUTC = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second);
-  return asUTC - date.getTime();
-}
-
-/** A wall-clock time in `tz` -> an absolute UTC ISO string (or null if unknown). */
-function localToIso(y: number, mo: number, d: number, h: number, mi: number, tz: string | undefined): string | null {
-  if (!tz) return null;
-  const guess = Date.UTC(y, mo, d, h, mi);
-  const off = offsetMs(new Date(guess), tz);
-  return new Date(guess - off).toISOString().replace(/\.000Z$/, "Z");
-}
 
 function parseDateTime(timeStr: string, dateStr: string) {
   const t = timeStr.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
@@ -138,8 +124,8 @@ function parseItineraryText(text: string): ExtractedItinerary {
       origin_city: cityFrom(oCode, oName),
       destination_airport: dCode,
       destination_city: cityFrom(dCode, dName),
-      scheduled_departure: dep ? localToIso(dep.y, dep.mo, dep.d, dep.h, dep.mi, AIRPORTS[oCode]?.tz) : null,
-      scheduled_arrival: arr ? localToIso(arr.y, arr.mo, arr.d, arr.h, arr.mi, AIRPORTS[dCode]?.tz) : null,
+      scheduled_departure: dep ? airportLocalToUtcIso(naiveIso(dep), oCode) : null,
+      scheduled_arrival: arr ? airportLocalToUtcIso(naiveIso(arr), dCode) : null,
       terminal_departure: cleanTerminal(depTerminal),
       aircraft_type: aircraftFrom(flightRest),
     });

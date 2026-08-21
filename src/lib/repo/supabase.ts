@@ -363,6 +363,9 @@ class SupabaseRepo implements Repo {
     const t = data as Task;
     return { ...t, creator: users.get(t.created_by ?? "") ?? null, assignee: null };
   }
+  async updateTask(id: string, patch: Partial<Pick<Task, "title" | "notes" | "due_date">>) {
+    await this.sb.from("tasks").update(patch).eq("id", id);
+  }
   async claimTask(id: string, userId: string): Promise<ClaimResult> {
     const { data } = await this.sb.from("tasks").update({ assigned_to: userId }).eq("id", id).is("assigned_to", null).select("assigned_to");
     if (data && data.length) return { ok: true };
@@ -379,6 +382,9 @@ class SupabaseRepo implements Repo {
       if (!(cur as { assigned_to: string | null } | null)?.assigned_to) patch.assigned_to = userId;
     }
     await this.sb.from("tasks").update(patch).eq("id", id);
+  }
+  async deleteTask(id: string) {
+    await this.sb.from("tasks").delete().eq("id", id);
   }
 
   async listInfo(): Promise<InfoGroup[]> {
@@ -495,6 +501,9 @@ class SupabaseRepo implements Repo {
       throw error;
     }
     return this.photoView(data as Photo, await this.userMap());
+  }
+  async updatePhotoCaption(id: string, caption: string | null) {
+    await this.sb.from("photos").update({ caption }).eq("id", id);
   }
   async deletePhoto(id: string) {
     const { data } = await this.sb.from("photos").select("storage_path").eq("id", id).maybeSingle();

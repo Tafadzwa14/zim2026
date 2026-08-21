@@ -15,7 +15,7 @@ export default async function TasksPage() {
       {tasks.length === 0 ? (
         <EmptyState emoji="🎉" title="All done" hint="No tasks right now." />
       ) : (
-        <TaskList tasks={tasks} meId={me.id} today={tripTodayISO()} />
+        <TaskList tasks={tasks} meId={me.id} today={tripTodayISO()} isAdmin={me.is_admin} />
       )}
     </Screen>
   );

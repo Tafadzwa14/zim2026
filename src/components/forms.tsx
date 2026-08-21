@@ -7,7 +7,7 @@ import { useAction } from "@/lib/use-action";
 import * as actions from "@/lib/actions";
 import { Spinner } from "@/components/ui";
 import { isoToTripInput, tripInputToIso } from "@/lib/format";
-import type { NewLegInput } from "@/lib/repo/types";
+import type { NewLegInput, TaskView } from "@/lib/repo/types";
 import type { Place, PlanCategory, PublicUser } from "@/lib/types";
 
 const todayInput = () => new Date().toLocaleDateString("en-CA");
@@ -283,18 +283,25 @@ export function ShoppingForm({ me, users, onDone }: { me: PublicUser; users: Pub
   );
 }
 
-export function TaskForm({ onDone }: { onDone: () => void }) {
+/** Add a task, or edit an existing one when `task` is supplied. */
+export function TaskForm({ task, onDone }: { task?: TaskView; onDone: () => void }) {
   const { run, pending } = useAction();
-  const [form, setForm] = useState({ title: "", due_date: "", notes: "" });
+  const editing = Boolean(task);
+  const [form, setForm] = useState({ title: task?.title ?? "", due_date: task?.due_date ?? "", notes: task?.notes ?? "" });
+  const submit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload = { title: form.title, due_date: form.due_date || null, notes: form.notes || null };
+    run(() => (task ? actions.editTask(task.id, payload) : actions.addTask(payload)), { onSuccess: onDone });
+  };
   return (
-    <form onSubmit={(e) => { e.preventDefault(); run(() => actions.addTask({ title: form.title, due_date: form.due_date || null, notes: form.notes || null }), { onSuccess: onDone }); }}>
+    <form onSubmit={submit}>
       <label className="zc-label">Task</label>
       <input className="zc-input" autoFocus placeholder="e.g. Pick up drinks" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
       <label className="zc-label">Due date (optional)</label>
       <input type="date" className="zc-input" value={form.due_date} onChange={(e) => setForm({ ...form, due_date: e.target.value })} />
       <label className="zc-label">Notes (optional)</label>
       <textarea className="zc-input min-h-16" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-      <button className="zc-btn mt-5 w-full" disabled={pending}>{pending && <Spinner />}{pending ? "Adding…" : "Add task"}</button>
+      <button className="zc-btn mt-5 w-full" disabled={pending || !form.title.trim()}>{pending && <Spinner />}{pending ? "Saving…" : editing ? "Save changes" : "Add task"}</button>
     </form>
   );
 }

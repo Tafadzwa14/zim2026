@@ -361,6 +361,10 @@ class MemoryRepo implements Repo {
     this.d.tasks.push(t);
     return this.taskView(t);
   }
+  async updateTask(id: string, patch: Partial<Pick<Task, "title" | "notes" | "due_date">>) {
+    const t = this.d.tasks.find((x) => x.id === id);
+    if (t) { Object.assign(t, patch); t.updated_at = nowIso(); }
+  }
   async claimTask(id: string, userId: string): Promise<ClaimResult> {
     const t = this.d.tasks.find((x) => x.id === id);
     if (!t) return { ok: false, claimedBy: null };
@@ -375,6 +379,9 @@ class MemoryRepo implements Repo {
   async setTaskDone(id: string, done: boolean, userId: string) {
     const t = this.d.tasks.find((x) => x.id === id);
     if (t) { t.completed = done; t.completed_at = done ? nowIso() : null; if (done && !t.assigned_to) t.assigned_to = userId; t.updated_at = nowIso(); }
+  }
+  async deleteTask(id: string) {
+    this.d.tasks = this.d.tasks.filter((x) => x.id !== id);
   }
 
   async listInfo(): Promise<InfoGroup[]> {
@@ -483,6 +490,10 @@ class MemoryRepo implements Repo {
     };
     this.photos.unshift(p);
     return { ...p, url, uploader: this.user(input.uploaded_by) };
+  }
+  async updatePhotoCaption(id: string, caption: string | null) {
+    const p = this.photos.find((x) => x.id === id);
+    if (p) p.caption = caption;
   }
   async deletePhoto(id: string) {
     this.photos = this.photos.filter((p) => p.id !== id);

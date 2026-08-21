@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
+import { Sheet } from "@/components/sheet";
 import { useAction } from "@/lib/use-action";
 import * as actions from "@/lib/actions";
+import { Spinner } from "@/components/ui";
 import type { PhotoView } from "@/lib/repo/types";
 
 /**
@@ -124,7 +126,6 @@ export function PhotoCarousel({ photos, aspect = "16 / 10", autoMs = 5000 }: { p
 }
 
 export function PhotoGallery({ photos, meId, isAdmin }: { photos: PhotoView[]; meId: string; isAdmin: boolean }) {
-  const { run, pending } = useAction();
   const fileRef = useRef<HTMLInputElement>(null);
   const [caption, setCaption] = useState("");
   const [uploading, setUploading] = useState<{ done: number; total: number } | null>(null);
@@ -190,41 +191,80 @@ export function PhotoGallery({ photos, meId, isAdmin }: { photos: PhotoView[]; m
 
       {photos.length > 0 && (
         <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-          {photos.map((p) => {
-            const canDelete = p.uploaded_by === meId || isAdmin;
-            return (
-              <figure key={p.id} className="zc-card group relative overflow-hidden p-0">
-                <a href={p.url} target="_blank" rel="noreferrer" className="block">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={p.url}
-                    alt={p.caption ?? `Photo by ${p.uploader?.name ?? "someone"}`}
-                    className="aspect-square h-full w-full object-cover"
-                    loading="lazy"
-                  />
-                </a>
-                {(p.caption || p.uploader) && (
-                  <figcaption className="absolute inset-x-0 bottom-0 flex items-center gap-1.5 bg-gradient-to-t from-black/55 to-transparent px-2.5 pb-2 pt-6 text-[11px] font-bold text-white">
-                    {p.uploader && <span aria-hidden>{p.uploader.emoji}</span>}
-                    <span className="truncate">{p.caption ?? p.uploader?.name}</span>
-                  </figcaption>
-                )}
-                {canDelete && (
-                  <button
-                    type="button"
-                    aria-label="Remove photo"
-                    disabled={pending}
-                    onClick={() => run(() => actions.deletePhoto(p.id))}
-                    className="absolute right-1.5 top-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-black/45 text-sm text-white opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
-                  >
-                    🗑
-                  </button>
-                )}
-              </figure>
-            );
-          })}
+          {photos.map((p) => (
+            <PhotoTile key={p.id} photo={p} canManage={p.uploaded_by === meId || isAdmin} />
+          ))}
         </div>
       )}
     </>
+  );
+}
+
+/** One photo in the grid, with edit-caption and delete for those who can manage it. */
+function PhotoTile({ photo, canManage }: { photo: PhotoView; canManage: boolean }) {
+  const { run, pending } = useAction();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(photo.caption ?? "");
+
+  return (
+    <figure className="zc-card group relative overflow-hidden p-0">
+      <a href={photo.url} target="_blank" rel="noreferrer" className="block">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={photo.url}
+          alt={photo.caption ?? `Photo by ${photo.uploader?.name ?? "someone"}`}
+          className="aspect-square h-full w-full object-cover"
+          loading="lazy"
+        />
+      </a>
+      {(photo.caption || photo.uploader) && (
+        <figcaption className="absolute inset-x-0 bottom-0 flex items-center gap-1.5 bg-gradient-to-t from-black/55 to-transparent px-2.5 pb-2 pt-6 text-[11px] font-bold text-white">
+          {photo.uploader && <span aria-hidden>{photo.uploader.emoji}</span>}
+          <span className="truncate">{photo.caption ?? photo.uploader?.name}</span>
+        </figcaption>
+      )}
+      {canManage && (
+        <div className="absolute right-1.5 top-1.5 flex gap-1.5">
+          <button
+            type="button"
+            aria-label="Edit caption"
+            onClick={() => { setDraft(photo.caption ?? ""); setEditing(true); }}
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-black/45 text-sm text-white"
+          >
+            ✏️
+          </button>
+          <button
+            type="button"
+            aria-label="Remove photo"
+            disabled={pending}
+            onClick={() => { if (confirm("Remove this photo?")) run(() => actions.deletePhoto(photo.id)); }}
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-black/45 text-sm text-white disabled:opacity-50"
+          >
+            🗑
+          </button>
+        </div>
+      )}
+      {canManage && (
+        <Sheet open={editing} onClose={() => setEditing(false)} title="Edit caption">
+          <label className="zc-label" htmlFor={`caption-${photo.id}`}>Caption</label>
+          <input
+            id={`caption-${photo.id}`}
+            className="zc-input"
+            autoFocus
+            placeholder="Add a caption"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+          />
+          <button
+            type="button"
+            className="zc-btn mt-4 w-full"
+            disabled={pending}
+            onClick={() => run(() => actions.editPhotoCaption(photo.id, draft), { onSuccess: () => setEditing(false) })}
+          >
+            {pending && <Spinner />}{pending ? "Saving…" : "Save caption"}
+          </button>
+        </Sheet>
+      )}
+    </figure>
   );
 }

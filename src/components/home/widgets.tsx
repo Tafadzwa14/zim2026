@@ -536,7 +536,7 @@ export function renderMobileWidget(id: string, ctx: HomeCtx): ReactNode {
       return ctx.myTasks.length ? (
         <section>
           <SectionHeader meta={<Link href="/tasks" className="text-honey">See all ›</Link>}>My tasks</SectionHeader>
-          <List>{ctx.myTasks.slice(0, 4).map((t) => <TaskItemRow key={t.id} task={t} meId={ctx.me.id} today={d.today} />)}</List>
+          <List>{ctx.myTasks.slice(0, 4).map((t) => <TaskItemRow key={t.id} task={t} meId={ctx.me.id} today={d.today} isAdmin={ctx.me.is_admin} />)}</List>
         </section>
       ) : null;
 
@@ -658,7 +658,7 @@ export function renderDesktopWidget(id: string, ctx: HomeCtx): ReactNode {
       const open = d.tasks.filter((t) => !t.completed);
       return (
         <Panel title="Tasks" link={{ label: "Open tasks", href: "/tasks" }}>
-          {open.slice(0, 5).map((t) => <TaskItemRow key={t.id} task={t} meId={me.id} />)}
+          {open.slice(0, 5).map((t) => <TaskItemRow key={t.id} task={t} meId={me.id} isAdmin={me.is_admin} />)}
           {open.length === 0 && <PanelEmpty emoji="🎉" text="Nothing to do" />}
         </Panel>
       );

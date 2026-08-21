@@ -482,6 +482,28 @@ export async function addTask(input: { title: string; due_date?: string | null; 
   refresh();
   return ok({}, "Task added");
 }
+export async function editTask(id: string, input: { title: string; due_date?: string | null; notes?: string | null }): Promise<ActionResult> {
+  const me = await requireUser();
+  const repo = getRepo();
+  const task = (await repo.listTasks()).find((t) => t.id === id);
+  if (!task) return fail("Task not found");
+  if (task.created_by !== me.id && !me.is_admin) return fail("Only the creator or an admin can edit this");
+  const title = input.title?.trim();
+  if (!title) return fail("Give the task a title");
+  await repo.updateTask(id, { title, due_date: input.due_date || null, notes: input.notes?.trim() || null });
+  refresh();
+  return ok({}, "Task updated");
+}
+export async function deleteTask(id: string): Promise<ActionResult> {
+  const me = await requireUser();
+  const repo = getRepo();
+  const task = (await repo.listTasks()).find((t) => t.id === id);
+  if (!task) return fail("Task not found");
+  if (task.created_by !== me.id && !me.is_admin) return fail("Only the creator or an admin can delete this");
+  await repo.deleteTask(id);
+  refresh();
+  return ok({}, "Task deleted");
+}
 export async function claimTask(id: string): Promise<ActionResult> {
   const me = await requireUser();
   const repo = getRepo();
@@ -750,6 +772,16 @@ export async function uploadPhoto(formData: FormData): Promise<ActionResult<{ id
   }
 }
 
+export async function editPhotoCaption(id: string, caption: string | null): Promise<ActionResult> {
+  const me = await requireUser();
+  const repo = getRepo();
+  const photo = (await repo.listPhotos()).find((p) => p.id === id);
+  if (!photo) return fail("Photo not found");
+  if (photo.uploaded_by !== me.id && !me.is_admin) return fail("Only the person who added it or an admin can edit it");
+  await repo.updatePhotoCaption(id, caption?.trim() || null);
+  refresh();
+  return ok({}, "Caption updated");
+}
 export async function deletePhoto(id: string): Promise<ActionResult> {
   const me = await requireUser();
   const repo = getRepo();

@@ -242,9 +242,11 @@ export interface Repo {
   // tasks
   listTasks(): Promise<TaskView[]>;
   addTask(input: NewTaskInput): Promise<TaskView>;
+  updateTask(id: string, patch: Partial<Pick<Task, "title" | "notes" | "due_date">>): Promise<void>;
   claimTask(id: string, userId: string): Promise<ClaimResult>;
   unclaimTask(id: string): Promise<void>;
   setTaskDone(id: string, done: boolean, userId: string): Promise<void>;
+  deleteTask(id: string): Promise<void>;
 
   // info + announcements + activity
   listInfo(): Promise<InfoGroup[]>;
@@ -268,5 +270,6 @@ export interface Repo {
   // photos
   listPhotos(): Promise<PhotoView[]>;
   addPhoto(input: NewPhotoInput): Promise<PhotoView>;
+  updatePhotoCaption(id: string, caption: string | null): Promise<void>;
   deletePhoto(id: string): Promise<void>;
 }

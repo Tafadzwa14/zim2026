@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
 import { EmptyState, List } from "@/components/ui";
 import { Sheet } from "@/components/sheet";
-import { ShoppingForm } from "@/components/forms";
+import { ShoppingForm, TaskForm } from "@/components/forms";
 import { useAction } from "@/lib/use-action";
 import * as actions from "@/lib/actions";
 import { fmtDayShort, timeAgo, tripInstant } from "@/lib/format";
@@ -236,9 +236,11 @@ export function ShoppingList({ items, meId, users }: { items: ShoppingView[]; me
   );
 }
 
-export function TaskItemRow({ task, meId, today }: { task: TaskView; meId: string; today?: string }) {
+export function TaskItemRow({ task, meId, today, isAdmin = false }: { task: TaskView; meId: string; today?: string; isAdmin?: boolean }) {
   const { run } = useAction();
+  const [editing, setEditing] = useState(false);
   const mine = task.assigned_to === meId;
+  const canManage = task.created_by === meId || isAdmin;
   const overdue = !task.completed && !!task.due_date && !!today && task.due_date < today;
   return (
     <div className={cn("flex items-center gap-3 border-b border-line2 px-4 py-3.5 last:border-0", task.completed && "opacity-70", overdue && "bg-[color-mix(in_srgb,var(--warn)_8%,transparent)]")}>
@@ -273,6 +275,27 @@ export function TaskItemRow({ task, meId, today }: { task: TaskView; meId: strin
         ) : (
           <Btn onClick={() => run(() => actions.claimTask(task.id))}>I&apos;ll do it</Btn>
         ))}
+      {canManage && (
+        <button
+          aria-label="Edit task"
+          onClick={() => setEditing(true)}
+          className="grid h-8 w-8 flex-none place-items-center rounded-lg border border-line text-sm text-muted"
+        >
+          ✏️
+        </button>
+      )}
+      {canManage && (
+        <Sheet open={editing} onClose={() => setEditing(false)} title="Edit task">
+          <TaskForm task={task} onDone={() => setEditing(false)} />
+          <Btn
+            variant="danger"
+            className="mt-3 w-full py-3 text-sm"
+            onClick={() => { if (confirm("Delete this task?")) run(() => actions.deleteTask(task.id), { onSuccess: () => setEditing(false) }); }}
+          >
+            Delete task
+          </Btn>
+        </Sheet>
+      )}
     </div>
   );
 }
@@ -280,7 +303,7 @@ export function TaskItemRow({ task, meId, today }: { task: TaskView; meId: strin
 type TaskSeg = "all" | "mine" | "todo";
 
 /** Tasks page list with All / Mine / To-do filters and overdue-first ordering. */
-export function TaskList({ tasks, meId, today }: { tasks: TaskView[]; meId: string; today: string }) {
+export function TaskList({ tasks, meId, today, isAdmin = false }: { tasks: TaskView[]; meId: string; today: string; isAdmin?: boolean }) {
   const [seg, setSeg] = useState<TaskSeg>("all");
 
   const counts = useMemo(() => {
@@ -334,7 +357,7 @@ export function TaskList({ tasks, meId, today }: { tasks: TaskView[]; meId: stri
       {visible.length === 0 ? (
         <EmptyState emoji={seg === "mine" ? "🙌" : "🎉"} title={seg === "mine" ? "Nothing on you" : "Nothing here"} hint={seg === "all" ? "No tasks right now." : "Switch to All to see everything."} />
       ) : (
-        <List>{visible.map((t) => <TaskItemRow key={t.id} task={t} meId={meId} today={today} />)}</List>
+        <List>{visible.map((t) => <TaskItemRow key={t.id} task={t} meId={meId} today={today} isAdmin={isAdmin} />)}</List>
       )}
     </div>
   );
