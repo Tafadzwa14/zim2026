@@ -47,7 +47,7 @@ const nowIso = () => new Date().toISOString();
  */
 export function buildSeed(): SeedData {
   const settings: AppSettings = {
-    id: "singleton",
+    id: true,
     app_title: "Zim 2026",
     wedding_date: "2026-09-12",
     wedding_url: "https://becoming.thechiris.com",

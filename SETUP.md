@@ -1,61 +1,68 @@
-# Zim 2026 — setup
+# Zim 2026 setup
 
-A private family command centre for the September 2026 Zimbabwe trip.
-Next.js + TypeScript + Tailwind + Supabase, with a pluggable flight provider.
+## 1. Configure Supabase
 
-## What you need to provide
+Create a Supabase project, then copy `.env.local.example` to `.env.local` and provide:
 
-Two accounts create the credentials this app needs. Nothing goes in git;
-it all lives in a gitignored `.env.local`.
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` (server-only; never expose it to a browser)
+- `APP_PIN_PEPPER` generated with `openssl rand -hex 32`
 
-### 1. Supabase
-
-1. Create a project at https://supabase.com.
-2. In **Project Settings → API**, copy the Project URL, the `anon` public key,
-   and the `service_role` key.
-3. In the **SQL editor**, run the migrations in order:
-   - `supabase/migrations/0001_schema.sql`
-   - `supabase/migrations/0002_policies.sql`
-4. Optional: run `supabase/seed.sql` for demo family, travel and logistics.
-
-### 2. AeroDataBox (flight data)
-
-1. Subscribe to AeroDataBox on RapidAPI:
-   https://rapidapi.com/aedbx-aedbx/api/aerodatabox
-2. Copy your RapidAPI key.
-
-Prefer a different provider? Implement `FlightProvider`
-(`src/lib/flights/provider.ts`) and point the factory at it. No UI changes.
-
-## Configure and run
+Apply every SQL file in `supabase/migrations` in numeric order, including `0009_security_integrity.sql`. With the Supabase CLI linked to the project, use:
 
 ```bash
-cp .env.local.example .env.local   # then fill in the values
-npm install
-npm run dev                        # http://localhost:3000
+supabase db push
 ```
 
-The home page shows a live setup checklist until Supabase is connected and
-the migrations have run, then it confirms the connection.
+Migration 0009 is required. It makes shared tables and photos private, adds versioned sessions and one-time identity claim codes, enforces poll and pickup integrity, and installs transactional write functions.
 
-## Environment variables
+Optional demo data is in `supabase/seed.sql`.
 
-| Variable | Where | Purpose |
-| --- | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | public | Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | public | Anon key for browser reads and Realtime |
-| `SUPABASE_SERVICE_ROLE_KEY` | secret | Server-side writes; bypasses RLS |
-| `FLIGHT_PROVIDER` | secret | `aerodatabox` or `mock` |
-| `AERODATABOX_API_KEY` | secret | RapidAPI key |
-| `AERODATABOX_RAPIDAPI_HOST` | secret | Defaults to `aerodatabox.p.rapidapi.com` |
-| `APP_PIN_PEPPER` | secret | Extra secret mixed into PIN hashes |
-| `ADMIN_SETUP_TOKEN` | secret | One-time token to claim the first admin |
+## 2. Provision the initial people
 
-## Security notes
+Set `APP_PIN_PEPPER` and the Supabase variables in `.env.local`, then run:
 
-- The `service_role` key is server-only. Never import it into a client component.
-- PINs are hashed, never stored in plaintext (spec section 49).
-- RLS is on. The browser only reads the shared, non-sensitive tables; all
-  writes go through server actions using the service role after the server
-  verifies identity and permissions.
-- The private URL is convenience, not authorization.
+```bash
+node scripts/provision-users.mjs
+```
+
+The script prints a different one-time claim code for each person. Share each code privately with its owner. Once the first admin signs in, additional people and replacement claim codes can be managed under **Admin → People**. Codes are displayed only when created or reset; the database stores only their HMAC hashes.
+
+Changing `APP_PIN_PEPPER` invalidates existing PIN hashes, claim codes and sessions, so keep it stable and backed up securely.
+
+## 3. Optional live flight data
+
+For AeroDataBox through RapidAPI:
+
+```dotenv
+FLIGHT_PROVIDER=aerodatabox
+AERODATABOX_API_KEY=...
+AERODATABOX_RAPIDAPI_HOST=aerodatabox.p.rapidapi.com
+```
+
+Use `FLIGHT_PROVIDER=mock` for clearly labelled local demo data. OpenSky position credentials are optional; anonymous requests work with lower limits.
+
+## 4. Optional itinerary parsing
+
+`ITINERARY_PARSER=local` is free and keeps PDF content local. `local-with-ai-fallback` and `openai` require `OPENAI_API_KEY`; those modes send itinerary content to the configured OpenAI model when used.
+
+## 5. Run and verify
+
+```bash
+npm install
+npm run lint
+npm run typecheck
+npm test
+npm run build
+npm run dev
+```
+
+Open `http://localhost:3000`. In production, HTTPS is required for the secure session cookie.
+
+## Deployment safety
+
+- Keep `.env.local`, the service-role key and the PIN pepper out of source control.
+- Apply database migrations before deploying code that depends on them.
+- Keep the `photos` bucket private; the app issues short-lived signed URLs.
+- Back up Supabase before schema changes and periodically test identity reset and photo upload/delete flows.

@@ -28,6 +28,8 @@ export interface TravelView extends TravelGroup {
   members: PublicUser[];
   legs: FlightLeg[];
   pickup: Pickup | null;
+  /** Every requested airport pickup, keyed to its actual arrival leg. */
+  pickups: Pickup[];
   driver: PublicUser | null;
   activeLeg: FlightLeg | null;
   arrivalIso: string | null;
@@ -60,7 +62,7 @@ export interface PollView extends Poll {
   creator: PublicUser | null;
 }
 export interface PhotoView extends Photo {
-  /** Publicly reachable URL for the image (public bucket / data URL in memory). */
+  /** Short-lived signed URL in Supabase, or a data URL in memory mode. */
   url: string;
   uploader: PublicUser | null;
 }
@@ -71,6 +73,7 @@ export interface NewUserInput {
   username: string;
   emoji: string;
   pinHash: string;
+  claimTokenHash: string;
   is_admin?: boolean;
   status?: "upcoming" | "travelling" | "here";
 }
@@ -177,18 +180,22 @@ export interface Repo {
   updateSettings(patch: Partial<Pick<AppSettings, "app_title" | "wedding_date" | "wedding_url">>): Promise<void>;
   listUsers(): Promise<PublicUser[]>;
   getUser(id: string): Promise<PublicUser | null>;
-  getUserWithPin(username: string): Promise<{ id: string; pin_hash: string } | null>;
+  getUserWithPin(id: string): Promise<{ id: string; pin_hash: string; session_version: number } | null>;
+  getSessionVersion(id: string): Promise<number | null>;
   usernameTaken(username: string): Promise<boolean>;
   createUser(input: NewUserInput): Promise<PublicUser>;
   /** Admin-provisioned identities not yet claimed (sentinel PIN). */
   listPending(): Promise<PublicUser[]>;
   /** Claim a pending identity: set emoji + real PIN. Returns null if already claimed. */
-  claimUser(id: string, patch: { emoji: string; pinHash: string }): Promise<PublicUser | null>;
+  claimUser(id: string, patch: { emoji: string; pinHash: string; claimTokenHash: string }): Promise<{ user: PublicUser; sessionVersion: number } | null>;
   /** Admin roster: every user plus whether they've claimed their identity. */
   listRoster(): Promise<RosterUser[]>;
-  resetUserPin(id: string): Promise<void>;
+  resetUserPin(id: string, claimTokenHash: string): Promise<void>;
   /** Public: flag that a person wants their PIN reset. Returns false if unknown. */
-  requestPinReset(username: string): Promise<boolean>;
+  requestPinReset(userId: string): Promise<boolean>;
+  /** Atomically consume an auth attempt. False means the key is temporarily blocked. */
+  consumeAuthAttempt(key: string): Promise<boolean>;
+  clearAuthAttempts(key: string): Promise<void>;
   setUserRoles(id: string, roles: string[]): Promise<void>;
   setUserLocation(id: string, stayingAt: string | null): Promise<void>;
   /** Admin-only: phone numbers keyed by user id. Callers MUST gate on is_admin. */
@@ -223,16 +230,18 @@ export interface Repo {
   syncLeg(legId: string, patch: Partial<FlightLeg>): Promise<void>;
 
   // pickups
+  getPickup(id: string): Promise<Pickup | null>;
   requestPickup(travelGroupId: string, flightLegId: string | null): Promise<void>;
-  claimPickup(travelGroupId: string, userId: string): Promise<ClaimResult>;
+  claimPickup(pickupId: string, userId: string): Promise<ClaimResult>;
   /** Force-set the driver (admin reassign); clears any en-route flag. */
-  assignPickup(travelGroupId: string, driverUserId: string): Promise<void>;
-  releasePickup(travelGroupId: string): Promise<void>;
-  setPickupEnRoute(travelGroupId: string, enRoute: boolean): Promise<void>;
+  assignPickup(pickupId: string, driverUserId: string): Promise<void>;
+  releasePickup(pickupId: string): Promise<void>;
+  setPickupEnRoute(pickupId: string, enRoute: boolean): Promise<void>;
 
   // shopping
   listShopping(): Promise<ShoppingView[]>;
   addShopping(input: NewShoppingInput): Promise<ShoppingView>;
+  addOrMergeShopping(input: NewShoppingInput): Promise<{ id: string }>;
   setShoppingQuantity(id: string, quantity: number): Promise<void>;
   assignShopping(id: string, userId: string | null): Promise<void>;
   claimShopping(id: string, userId: string): Promise<ClaimResult>;

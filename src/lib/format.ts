@@ -24,13 +24,17 @@ function parts(iso: string, tz = TRIP_TZ) {
   };
 }
 
-/** Clock time in a given zone, e.g. `9:05 PM`. Defaults to trip time. */
+/**
+ * Clock time in a given zone, e.g. `21:05`. Defaults to trip time.
+ *
+ * Always 24-hour, everywhere in the app. This family reads these times across
+ * five zones off flight itineraries that are themselves 24-hour, and a dropped
+ * AM/PM there is a missed flight. Zero-padded so times stack in a column.
+ */
 export function fmtTimeIn(iso: string | null, tz?: string): string {
   if (!iso) return "";
   const { hour, minute } = parts(iso, tz ?? TRIP_TZ);
-  const ap = hour >= 12 ? "PM" : "AM";
-  const h = hour % 12 || 12;
-  return `${h}:${String(minute).padStart(2, "0")} ${ap}`;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
 }
 
 /** Render an instant as a `datetime-local` value in the requested IANA zone. */
@@ -75,10 +79,13 @@ export function fmtTime(iso: string | null): string {
   return fmtTimeIn(iso);
 }
 
+/**
+ * Trip-time clock. Kept as its own name for the call sites that want to say
+ * "24-hour" out loud, but {@link fmtTime} is 24-hour too now, so the two are
+ * the same string.
+ */
 export function fmtTime24(iso: string | null): string {
-  if (!iso) return "";
-  const { hour, minute } = parts(iso);
-  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  return fmtTime(iso);
 }
 
 /** Day and month in a given zone, e.g. `12 Sep`. Defaults to trip time. */
@@ -146,7 +153,7 @@ export function tripTodayISO(now: Date = new Date()): string {
 /**
  * The YYYY-MM-DD an instant falls on in a given zone. Defaults to trip time.
  * Use this for anything keyed to the destination's calendar day, such as an
- * arrival-day forecast: 6:30 AM in Melbourne is the day before in Harare.
+ * arrival-day forecast: 06:30 in Melbourne is the day before in Harare.
  */
 export function dateIn(iso: string, tz?: string): string {
   const { year, month, day } = parts(iso, tz ?? TRIP_TZ);
@@ -216,13 +223,13 @@ function weekdayShortIn(iso: string, tz: string): string {
 }
 
 export interface ViewerReading {
-  /** Clock time in the viewer's zone, e.g. `3:00 AM`. */
+  /** Clock time in the viewer's zone, e.g. `03:00`. */
   time: string;
   /** Day qualifier in the viewer's zone, e.g. `Sun`. Null when it's the same day. */
   day: string | null;
   /** How far ahead of the primary reading the viewer is, in minutes. Never 0. */
   deltaMinutes: number;
-  /** Ready to render, e.g. `3:00 AM Sun`. */
+  /** Ready to render, e.g. `03:00 Sun`. */
   label: string;
 }
 
@@ -241,7 +248,7 @@ export interface ViewerReading {
  *
  * `day` is set only when their calendar day differs, which is not an edge case.
  * A 7pm dinner in Harare is 3am the next morning in Melbourne, so a bare
- * "3:00 AM your time" would leave someone expecting it tonight.
+ * "03:00 your time" would leave someone expecting it tonight.
  *
  * `minDeltaMinutes` suppresses readings below a threshold, for the day we decide
  * that telling London they are one hour out is not worth the line.

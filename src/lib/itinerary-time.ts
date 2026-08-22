@@ -49,6 +49,13 @@ export function airportLocalToUtcIso(time: string | null | undefined, iata: stri
   if (!wc) return null;
   const tz = airportZone(iata) ?? TRIP_TZ;
   const guess = Date.UTC(wc.y, wc.mo, wc.d, wc.h, wc.mi);
-  const off = offsetMs(new Date(guess), tz);
-  return new Date(guess - off).toISOString().replace(/\.000Z$/, "Z");
+  const first = new Date(guess - offsetMs(new Date(guess), tz));
+  const second = new Date(guess - offsetMs(first, tz));
+  // Reject non-existent DST wall times instead of silently normalising them.
+  const rendered = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit",
+  }).formatToParts(second);
+  const get = (type: string) => Number(rendered.find((p) => p.type === type)?.value);
+  if (get("year") !== wc.y || get("month") !== wc.mo + 1 || get("day") !== wc.d || get("hour") !== wc.h || get("minute") !== wc.mi) return null;
+  return second.toISOString().replace(/\.000Z$/, "Z");
 }

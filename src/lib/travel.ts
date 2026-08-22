@@ -3,11 +3,26 @@
 // exactly the same rules. TravelView.activeLeg is legacy and misleading; use
 // currentLeg() here instead.
 
-import type { FlightLeg } from "@/lib/types";
+import type { FlightLeg, FlightStatus, LocationStatus, Pickup, TravelStatus } from "@/lib/types";
 import type { TravelView } from "@/lib/repo/types";
 
 /** Harare, the trip's home airport. */
 export const HARARE = "HRE";
+
+/** Derive a whole journey from all of its legs. */
+export function journeyStatus(statuses: FlightStatus[]): TravelStatus {
+  if (!statuses.length) return "upcoming";
+  if (statuses.every((status) => status === "landed" || status === "cancelled")) return "arrived";
+  if (statuses.some((status) => status === "air")) return "travelling";
+  return "upcoming";
+}
+
+/** Derive a person's travel badge without letting one journey overwrite another. */
+export function locationStatusForJourneys(statuses: TravelStatus[]): LocationStatus {
+  if (statuses.includes("travelling")) return "travelling";
+  if (statuses.includes("upcoming")) return "upcoming";
+  return "here";
+}
 
 /**
  * An IATA code as we compare it: trimmed and uppercased. Codes arrive from
@@ -42,6 +57,11 @@ export function legArrival(l: FlightLeg): string | null {
 /** A trip's legs in leg_order, as a copy (never mutates the view). */
 export function orderedLegs(t: TravelView): FlightLeg[] {
   return [...t.legs].sort((a, b) => a.leg_order - b.leg_order);
+}
+
+/** The pickup belonging to a specific arrival leg, if one was requested. */
+export function pickupForLeg(t: TravelView, legId: string): Pickup | null {
+  return t.pickups.find((p) => p.flight_leg_id === legId && p.requested) ?? null;
 }
 
 /**

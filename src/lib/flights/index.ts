@@ -1,6 +1,6 @@
 import "server-only";
 
-import { serverEnv } from "@/lib/env";
+import { serverEnv } from "@/lib/server-env";
 import { AeroDataBoxProvider } from "./aerodatabox";
 import { MockFlightProvider } from "./mock";
 import { OpenSkyPositionProvider } from "./opensky";
@@ -77,12 +77,14 @@ export async function searchFlight(
 export async function getFlightStatus(
   flightNumber: string,
   date: string,
-  active = false
+  active = false,
+  match?: { origin?: string; destination?: string; providerFlightId?: string | null },
 ): Promise<FlightStatusResult | null> {
   // Poll active flights more often; scheduled/landed rarely (section 25).
   const ttl = active ? 60_000 : 10 * 60_000;
-  return cached(`status:${flightNumber}:${date}`, ttl, () =>
-    getFlightProvider().getFlightStatus(flightNumber, date)
+  const matchKey = `${match?.origin ?? ""}:${match?.destination ?? ""}:${match?.providerFlightId ?? ""}`;
+  return cached(`status:${flightNumber}:${date}:${matchKey}`, ttl, () =>
+    getFlightProvider().getFlightStatus(flightNumber, date, match)
   );
 }
 

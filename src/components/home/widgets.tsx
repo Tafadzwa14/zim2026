@@ -5,7 +5,7 @@ import { cn } from "@/lib/cn";
 import type { Dashboard } from "@/lib/dashboard";
 import { categoryOf, flightStatusMeta, GOGO_BIRTHDAY, WEDDING_TIME } from "@/lib/display";
 import { durationLabel, fmtDayShortIn, fmtDayShortUpper, fmtTime, fmtTime24, fmtTimeIn, fmtZoneLabel, minutesBetween, timeAgo, tripDateOf, tripInstant } from "@/lib/format";
-import { currentLeg, legArrival, legDeparture, orderedLegs, type AirportRun, type AirportRunKind } from "@/lib/travel";
+import { currentLeg, legArrival, legDeparture, orderedLegs, pickupForLeg, type AirportRun, type AirportRunKind } from "@/lib/travel";
 import { FlightCard } from "@/components/flight-card";
 import { List, LiveDot, SectionHeader } from "@/components/ui";
 import { PickupControl, ShoppingItemRow, TaskItemRow } from "@/components/interactive";
@@ -123,7 +123,8 @@ export function MyBanner({ d }: { d: Dashboard }) {
     const when = today ? "today" : fmtDayShortUpper(run.hreIso);
     // A drop-off has no pickup record of its own, so only a pickup can be short
     // a driver, and a cancelled flight needs nobody.
-    const needsDriver = !run.cancelled && run.kind === "pickup" && Boolean(run.trip.pickup?.requested && !run.trip.driver);
+    const pickup = pickupForLeg(run.trip, run.leg.id);
+    const needsDriver = !run.cancelled && run.kind === "pickup" && Boolean(pickup && !pickup.driver_user_id);
     const eyebrow = run.cancelled
       ? `${m.label} cancelled · ${when}`
       : run.kind === "pickup"
@@ -156,7 +157,8 @@ export function MyStatTile({ d }: { d: Dashboard }) {
   if (run) {
     const m = RUN_META[run.kind];
     const today = tripDateOf(run.hreIso) === d.today;
-    const needsDriver = !run.cancelled && run.kind === "pickup" && Boolean(run.trip.pickup?.requested && !run.trip.driver);
+    const pickup = pickupForLeg(run.trip, run.leg.id);
+    const needsDriver = !run.cancelled && run.kind === "pickup" && Boolean(pickup && !pickup.driver_user_id);
     const value = run.cancelled ? "Cancelled" : today ? fmtTime(run.hreIso) : fmtDayShortUpper(run.hreIso);
     const sub = needsDriver ? `${run.trip.title} · driver needed` : `${crew(run.trip)} ${run.trip.title}`;
     const eyebrow = run.cancelled
@@ -187,8 +189,10 @@ function RunRow({ run, ctx }: { run: AirportRun; ctx: HomeCtx }) {
   const { d, me } = ctx;
   const m = RUN_META[run.kind];
   const t = run.trip;
+  const pickup = run.kind === "pickup" ? pickupForLeg(t, run.leg.id) : null;
+  const driver = pickup?.driver_user_id ? d.users.find((u) => u.id === pickup.driver_user_id) ?? null : null;
   const today = tripDateOf(run.hreIso) === d.today;
-  const showDriver = !run.cancelled && run.kind === "pickup" && Boolean(t.pickup?.requested);
+  const showDriver = !run.cancelled && Boolean(pickup);
   return (
     <div className="border-b border-line2 px-4 py-3.5 last:border-0">
       <div className="flex items-center gap-3">
@@ -209,7 +213,7 @@ function RunRow({ run, ctx }: { run: AirportRun; ctx: HomeCtx }) {
       {showDriver && (
         <div className="mt-2.5 flex items-center gap-2.5 pl-[38px]">
           <span className="text-lg" aria-hidden>🚗</span>
-          <PickupControl travelId={t.id} driver={t.driver} meId={me.id} isAdmin={me.is_admin} canDrive={me.is_admin || me.roles.includes("driver")} drivers={d.users.filter((u) => u.is_admin || u.roles.includes("driver"))} enRoute={t.pickup?.driver_en_route} />
+          <PickupControl pickupId={pickup!.id} driver={driver} meId={me.id} isAdmin={me.is_admin} canDrive={me.is_admin || me.roles.includes("driver")} drivers={d.users.filter((u) => u.is_admin || u.roles.includes("driver"))} enRoute={pickup!.driver_en_route} />
         </div>
       )}
     </div>
@@ -348,16 +352,20 @@ export function needsMe(d: Dashboard, me: PublicUser): Nudge[] {
   for (const t of d.travel) {
     if (t.status === "arrived") continue;
     const iAmOn = t.members.some((m) => m.id === me.id);
-    if (t.pickup?.requested && !t.pickup.driver_user_id && iAmOn) {
+    const openPickups = t.pickups.filter((p) => p.requested && !p.driver_user_id);
+    const assignedPickups = t.pickups.filter((p) => p.driver_user_id === me.id);
+    if (openPickups.length && iAmOn) {
       out.push({ icon: "🚗", text: "Your flight still needs a driver", href: `/flights/${t.id}` });
     }
-    if (t.pickup?.driver_user_id === me.id && t.arrivalIso && tripDateOf(t.arrivalIso) === d.today) {
+    if (assignedPickups.length && t.arrivalIso && tripDateOf(t.arrivalIso) === d.today) {
       out.push({ icon: "🛬", text: `You're picking up ${t.title} today`, href: `/flights/${t.id}` });
     }
   }
   if (me.roles.includes("driver") || me.is_admin) {
-    const open = d.travel.filter(
-      (t) => t.status !== "arrived" && t.pickup?.requested && !t.pickup.driver_user_id && !t.members.some((m) => m.id === me.id),
+    const open = d.travel.flatMap((t) =>
+      t.status === "arrived" || t.members.some((m) => m.id === me.id)
+        ? []
+        : t.pickups.filter((p) => p.requested && !p.driver_user_id),
     );
     if (open.length) out.push({ icon: "🚗", text: `${open.length} pickup${open.length > 1 ? "s" : ""} need a driver`, href: "/flights" });
   }

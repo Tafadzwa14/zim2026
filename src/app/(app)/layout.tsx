@@ -21,7 +21,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     repo.listPlaces(),
   ]);
   const counts = {
-    pickups: travel.filter((t) => t.pickup?.requested && !t.pickup.driver_user_id).length,
+    pickups: travel.flatMap((t) => t.pickups).filter((p) => p.requested && !p.driver_user_id).length,
     shopping: shopping.filter((s) => !s.completed).length,
     tasks: tasks.filter((t) => !t.completed).length,
   };

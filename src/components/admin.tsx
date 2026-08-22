@@ -64,9 +64,15 @@ export function AddPersonForm() {
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [admin, setAdmin] = useState(false);
+  const [invite, setInvite] = useState<{ name: string; code: string } | null>(null);
 
   if (!open) {
-    return <button onClick={() => setOpen(true)} className="zc-btn w-full py-3 text-sm">+ Add a person</button>;
+    return (
+      <div className="space-y-3">
+        {invite && <ClaimCodeBox name={invite.name} code={invite.code} onDone={() => setInvite(null)} />}
+        <button onClick={() => setOpen(true)} className="zc-btn w-full py-3 text-sm">+ Add a person</button>
+      </div>
+    );
   }
   return (
     <form
@@ -74,7 +80,7 @@ export function AddPersonForm() {
       onSubmit={(e) => {
         e.preventDefault();
         run(() => actions.adminAddPerson({ name, username, is_admin: admin }), {
-          onSuccess: (r) => { if (r.ok) { setName(""); setUsername(""); setAdmin(false); setOpen(false); } },
+          onSuccess: (r) => { if (r.ok) { setInvite({ name, code: r.claimCode }); setName(""); setUsername(""); setAdmin(false); setOpen(false); } },
         });
       }}
     >
@@ -93,10 +99,26 @@ export function AddPersonForm() {
   );
 }
 
+function ClaimCodeBox({ name, code, onDone }: { name: string; code: string; onDone?: () => void }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="zc-card border-[color-mix(in_srgb,var(--good)_35%,var(--line))] p-4">
+      <div className="text-sm font-extrabold">One-time invite for {name}</div>
+      <code className="mono mt-2 block break-all rounded-xl bg-chip px-3 py-2 text-sm font-bold">{code}</code>
+      <p className="mt-2 text-xs text-muted">This code is shown only now. Send it privately.</p>
+      <div className="mt-3 flex gap-2">
+        <SmallBtn tone="solid" onClick={async () => { await navigator.clipboard.writeText(code); setCopied(true); }}>{copied ? "Copied ✓" : "Copy code"}</SmallBtn>
+        {onDone && <SmallBtn onClick={onDone}>Done</SmallBtn>}
+      </div>
+    </div>
+  );
+}
+
 export function RosterRow({ u, meId, places }: { u: RosterUser; meId: string; places: Place[] }) {
   const { run } = useAction();
   const [open, setOpen] = useState(false);
   const [phone, setPhone] = useState(u.phone_number ?? "");
+  const [claimCode, setClaimCode] = useState<string | null>(null);
   const isSelf = u.id === meId;
   const roleLabels = ROLES.filter((r) => u.roles.includes(r.slug));
 
@@ -140,6 +162,7 @@ export function RosterRow({ u, meId, places }: { u: RosterUser; meId: string; pl
 
       {open && (
         <div className="space-y-3 bg-chip/40 px-4 pb-4 pt-1">
+          {claimCode && <ClaimCodeBox name={u.name} code={claimCode} onDone={() => setClaimCode(null)} />}
           <div>
             <div className="zc-label">Roles</div>
             <div className="flex flex-wrap gap-1.5">
@@ -184,7 +207,7 @@ export function RosterRow({ u, meId, places }: { u: RosterUser; meId: string; pl
 
           <div className="flex flex-wrap gap-2">
             {!isSelf && <SmallBtn onClick={() => run(() => actions.setAdmin(u.id, !u.is_admin))}>{u.is_admin ? "Revoke admin" : "Make admin"}</SmallBtn>}
-            {u.claimed && !isSelf && <SmallBtn onClick={() => { if (confirm(`Reset ${u.name}'s PIN? They'll set a new one at login.`)) run(() => actions.adminResetPin(u.id)); }}>Reset PIN</SmallBtn>}
+            {!isSelf && <SmallBtn onClick={() => { if (confirm(`${u.claimed ? "Reset the PIN and revoke every session for" : "Generate a new invite code for"} ${u.name}?`)) run(() => actions.adminResetPin(u.id), { onSuccess: (r) => { if (r.ok) setClaimCode(r.claimCode); } }); }}>{u.claimed ? "Reset PIN" : "New invite code"}</SmallBtn>}
             {!isSelf && <SmallBtn tone="danger" onClick={() => { if (confirm(`Remove ${u.name} from the family? This can't be undone.`)) run(() => actions.adminRemovePerson(u.id)); }}>Remove</SmallBtn>}
           </div>
         </div>
@@ -197,22 +220,10 @@ export function RosterRow({ u, meId, places }: { u: RosterUser; meId: string; pl
 /** Lists people who haven't claimed their identity yet, with a copyable invite. */
 export function NudgeUnclaimed({ roster }: { roster: RosterUser[] }) {
   const pending = roster.filter((u) => !u.claimed);
-  const [copied, setCopied] = useState<string | null>(null);
 
   if (pending.length === 0) {
     return <div className="zc-card px-4 py-3 text-sm font-semibold text-muted">Everyone has claimed their identity 🎉</div>;
   }
-
-  const invite = (name: string, username: string) =>
-    `Hi ${name}, join our Zim 2026 family hub: open the app, tap "Reclaim identity", enter your username "${username}" and set a 4-digit PIN. See you there!`;
-
-  const copy = async (u: RosterUser) => {
-    try {
-      await navigator.clipboard.writeText(invite(u.name, u.username));
-      setCopied(u.id);
-      setTimeout(() => setCopied((c) => (c === u.id ? null : c)), 2000);
-    } catch {}
-  };
 
   return (
     <div className="zc-card overflow-hidden p-0">
@@ -223,7 +234,7 @@ export function NudgeUnclaimed({ roster }: { roster: RosterUser[] }) {
             <div className="text-[15px] font-extrabold">{u.name}</div>
             <div className="mono text-[11px] text-muted">@{u.username} · not claimed</div>
           </div>
-          <SmallBtn onClick={() => copy(u)}>{copied === u.id ? "Copied ✓" : "Copy invite"}</SmallBtn>
+          <span className="text-right text-[11px] font-semibold text-muted">Use “New invite code”<br />under People</span>
         </div>
       ))}
     </div>

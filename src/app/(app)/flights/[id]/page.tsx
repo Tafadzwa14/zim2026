@@ -15,7 +15,7 @@ import { BackHeader, PersonChip, SectionHeader } from "@/components/ui";
 import { FlightStatusAdmin, PickupControl, RefreshFlight } from "@/components/interactive";
 import { FlightEditForm } from "@/components/admin";
 import type { TravelView } from "@/lib/repo/types";
-import type { FlightLeg, PublicUser } from "@/lib/types";
+import type { FlightLeg, Pickup, PublicUser } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +61,7 @@ export default async function FlightDetail({ params }: { params: Promise<{ id: s
   const clockAirport = atArrivalEnd ? focus.destination_airport : focus.origin_airport;
   const clockCity = atArrivalEnd ? focus.destination_city : focus.origin_city;
   const clockLabel = focus.status === "air" ? `Arriving ${clockAirport}` : clockAirport;
-  // Arrival day means the calendar day where they land, not in Harare: a 6:30 AM
+  // Arrival day means the calendar day where they land, not in Harare: a 06:30
   // Melbourne landing is still the previous day back home.
   const weather = arr ? await getArrivalWeather(finalLeg.destination_city, dateIn(arr, arrZone)) : null;
   const focusDep = legDeparture(focus);
@@ -139,10 +139,17 @@ export default async function FlightDetail({ params }: { params: Promise<{ id: s
         <SectionHeader meta={String(t.members.length)}>Travelling</SectionHeader>
         <div className="flex flex-wrap gap-2">{t.members.map((m) => <PersonChip key={m.id} user={m} />)}</div>
 
-        {t.pickup?.requested && (
+        {t.pickups.length > 0 && (
           <>
-            <SectionHeader>Pickup</SectionHeader>
-            <PickupReadiness travel={t} leg={finalLeg} driver={driver} me={me} drivers={drivers} />
+            <SectionHeader meta={t.pickups.length > 1 ? String(t.pickups.length) : undefined}>Pickup</SectionHeader>
+            <div className="space-y-3">
+              {t.pickups.map((pickup) => {
+                const pickupLeg = legs.find((leg) => leg.id === pickup.flight_leg_id);
+                if (!pickupLeg) return null;
+                const pickupDriver = pickup.driver_user_id ? users.find((u) => u.id === pickup.driver_user_id) ?? null : null;
+                return <PickupReadiness key={pickup.id} travel={t} leg={pickupLeg} pickup={pickup} driver={pickupDriver} me={me} drivers={drivers} />;
+              })}
+            </div>
           </>
         )}
 
@@ -244,7 +251,7 @@ function FlightAlertStrip({ alerts }: { alerts: FlightAlert[] }) {
   );
 }
 
-function PickupReadiness({ travel, leg, driver, me, drivers }: { travel: TravelView; leg: FlightLeg; driver: PublicUser | null; me: PublicUser; drivers: PublicUser[] }) {
+function PickupReadiness({ travel, leg, pickup, driver, me, drivers }: { travel: TravelView; leg: FlightLeg; pickup: Pickup; driver: PublicUser | null; me: PublicUser; drivers: PublicUser[] }) {
   const arrival = legArrival(leg) ?? travel.arrivalIso;
   const leaveBy = pickupLeaveBy(arrival);
   const terminal = [leg.terminal_arrival ? `Terminal ${leg.terminal_arrival}` : null, leg.gate_arrival ? `Gate ${leg.gate_arrival}` : null].filter(Boolean).join(" · ");
@@ -259,7 +266,7 @@ function PickupReadiness({ travel, leg, driver, me, drivers }: { travel: TravelV
       {(leg.delay_minutes ?? 0) > 0 && <div className="mt-3 rounded-xl bg-[color-mix(in_srgb,var(--warn)_14%,transparent)] px-3 py-2 text-xs font-bold text-warn">Flight is {leg.delay_minutes} min late. The driver target follows the updated landing time.</div>}
       <div className="mt-4 flex items-center gap-2.5 border-t border-line2 pt-3">
         <span className="text-xl" aria-hidden>🚗</span>
-        <PickupControl travelId={travel.id} driver={driver} meId={me.id} isAdmin={me.is_admin} canDrive={canDrive} drivers={drivers} big={!driver} enRoute={travel.pickup?.driver_en_route} />
+        <PickupControl pickupId={pickup.id} driver={driver} meId={me.id} isAdmin={me.is_admin} canDrive={canDrive} drivers={drivers} big={!driver} enRoute={pickup.driver_en_route} />
       </div>
     </div>
   );

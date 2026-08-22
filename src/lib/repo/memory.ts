@@ -46,9 +46,11 @@ const nowIso = () => new Date().toISOString();
 const uid = () => globalThis.crypto.randomUUID();
 
 function toPublic(u: User): PublicUser {
-  const { pin_hash: _pin, phone_number: _phone, ...rest } = u;
+  const { pin_hash: _pin, phone_number: _phone, session_version: _version, claim_token_hash: _claim, ...rest } = u;
   void _pin;
   void _phone;
+  void _version;
+  void _claim;
   return rest;
 }
 
@@ -58,6 +60,7 @@ class MemoryRepo implements Repo {
   // No object storage in memory mode: hold the bytes inline as a data URL so
   // the gallery still renders when running without Supabase credentials.
   private photos: (Photo & { _url: string })[] = [];
+  private authAttempts = new Map<string, { count: number; startedAt: number; blockedUntil: number }>();
 
   private user(id: string | null): PublicUser | null {
     if (!id) return null;
@@ -75,12 +78,14 @@ class MemoryRepo implements Repo {
     const memberIds = this.d.members.filter((m) => m.travel_group_id === tg.id).map((m) => m.user_id);
     const active = this.activeLeg(legs);
     const last = legs[legs.length - 1] ?? null;
-    const pickup = this.d.pickups.find((p) => p.travel_group_id === tg.id) ?? null;
+    const pickups = this.d.pickups.filter((p) => p.travel_group_id === tg.id);
+    const pickup = pickups.find((p) => p.flight_leg_id === last?.id) ?? null;
     return {
       ...tg,
       members: memberIds.map((id) => this.user(id)).filter(Boolean) as PublicUser[],
       legs,
       pickup,
+      pickups,
       driver: pickup?.driver_user_id ? this.user(pickup.driver_user_id) : null,
       activeLeg: active,
       arrivalIso: last?.actual_arrival ?? last?.estimated_arrival ?? last?.scheduled_arrival ?? null,
@@ -100,9 +105,12 @@ class MemoryRepo implements Repo {
   async getUser(id: string) {
     return this.user(id);
   }
-  async getUserWithPin(username: string) {
-    const u = this.d.users.find((x) => x.username.toLowerCase() === username.toLowerCase());
-    return u ? { id: u.id, pin_hash: u.pin_hash } : null;
+  async getUserWithPin(id: string) {
+    const u = this.d.users.find((x) => x.id === id);
+    return u ? { id: u.id, pin_hash: u.pin_hash, session_version: u.session_version } : null;
+  }
+  async getSessionVersion(id: string) {
+    return this.d.users.find((x) => x.id === id)?.session_version ?? null;
   }
   async usernameTaken(username: string) {
     return this.d.users.some((x) => x.username.toLowerCase() === username.toLowerCase());
@@ -111,6 +119,7 @@ class MemoryRepo implements Repo {
     const u: User = {
       id: uid(), name: input.name, username: input.username, emoji: input.emoji,
       pin_hash: input.pinHash, is_admin: input.is_admin ?? false, status: input.status ?? "here",
+      session_version: 0, claim_token_hash: input.claimTokenHash,
       roles: [], staying_at: null, pin_reset_requested: false, phone_number: null, prefs: {},
       created_at: nowIso(), updated_at: nowIso(),
     };
@@ -120,26 +129,40 @@ class MemoryRepo implements Repo {
   async listPending() {
     return this.d.users.filter((u) => !u.pin_hash.includes(":")).map(toPublic).sort((a, b) => a.name.localeCompare(b.name));
   }
-  async claimUser(id: string, patch: { emoji: string; pinHash: string }) {
+  async claimUser(id: string, patch: { emoji: string; pinHash: string; claimTokenHash: string }) {
     const u = this.d.users.find((x) => x.id === id);
-    if (!u || u.pin_hash.includes(":")) return null;
-    u.emoji = patch.emoji; u.pin_hash = patch.pinHash; u.updated_at = nowIso();
-    return toPublic(u);
+    if (!u || u.pin_hash.includes(":") || u.claim_token_hash !== patch.claimTokenHash) return null;
+    u.emoji = patch.emoji; u.pin_hash = patch.pinHash; u.claim_token_hash = null; u.session_version += 1; u.updated_at = nowIso();
+    return { user: toPublic(u), sessionVersion: u.session_version };
   }
   async listRoster(): Promise<RosterUser[]> {
     return this.d.users
       .map((u) => ({ ...toPublic(u), claimed: u.pin_hash.includes(":"), phone_number: u.phone_number ?? null }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }
-  async resetUserPin(id: string) {
+  async resetUserPin(id: string, claimTokenHash: string) {
     const u = this.d.users.find((x) => x.id === id);
-    if (u) { u.pin_hash = "PENDING"; u.pin_reset_requested = false; u.updated_at = nowIso(); }
+    if (u) { u.pin_hash = "PENDING"; u.claim_token_hash = claimTokenHash; u.session_version += 1; u.pin_reset_requested = false; u.updated_at = nowIso(); }
   }
-  async requestPinReset(username: string) {
-    const u = this.d.users.find((x) => x.username.toLowerCase() === username.toLowerCase());
+  async requestPinReset(userId: string) {
+    const u = this.d.users.find((x) => x.id === userId);
     if (!u) return false;
     u.pin_reset_requested = true; u.updated_at = nowIso();
     return true;
+  }
+  async consumeAuthAttempt(key: string) {
+    const now = Date.now();
+    const current = this.authAttempts.get(key);
+    if (current?.blockedUntil && current.blockedUntil > now) return false;
+    const state = !current || now - current.startedAt > 15 * 60_000
+      ? { count: 1, startedAt: now, blockedUntil: 0 }
+      : { ...current, count: current.count + 1 };
+    if (state.count > 5) state.blockedUntil = now + 15 * 60_000;
+    this.authAttempts.set(key, state);
+    return state.blockedUntil === 0;
+  }
+  async clearAuthAttempts(key: string) {
+    this.authAttempts.delete(key);
   }
   async setUserRoles(id: string, roles: string[]) {
     const u = this.d.users.find((x) => x.id === id);
@@ -244,7 +267,7 @@ class MemoryRepo implements Repo {
     };
     this.d.travel.push(tg);
     for (const u of input.travellers) this.d.members.push({ travel_group_id: tg.id, user_id: u });
-    let firstLegId: string | null = null;
+    const pickupLegIds: string[] = [];
     for (const l of input.legs) {
       const leg: FlightLeg = {
         id: uid(), travel_group_id: tg.id, leg_order: l.leg_order, provider: l.provider ?? "demo",
@@ -261,10 +284,12 @@ class MemoryRepo implements Repo {
         delay_minutes: 0, last_synced_at: nowIso(), created_at: nowIso(), updated_at: nowIso(),
       };
       this.d.legs.push(leg);
-      firstLegId ??= leg.id;
+      if (l.destination_airport.trim().toUpperCase() === "HRE") pickupLegIds.push(leg.id);
     }
     if (input.pickup) {
-      this.d.pickups.push({ id: uid(), travel_group_id: tg.id, flight_leg_id: firstLegId, requested: true, driver_user_id: null, driver_en_route: false, notes: null, created_at: nowIso(), updated_at: nowIso() });
+      for (const flightLegId of pickupLegIds) {
+        this.d.pickups.push({ id: uid(), travel_group_id: tg.id, flight_leg_id: flightLegId, requested: true, driver_user_id: null, driver_en_route: false, notes: null, created_at: nowIso(), updated_at: nowIso() });
+      }
     }
     return this.travelView(tg);
   }
@@ -281,31 +306,32 @@ class MemoryRepo implements Repo {
     if (l) Object.assign(l, patch, { last_synced_at: nowIso(), updated_at: nowIso() });
   }
 
-  private pickupOf(tgId: string): Pickup | undefined {
-    return this.d.pickups.find((p) => p.travel_group_id === tgId);
+  private pickupOf(id: string): Pickup | undefined {
+    return this.d.pickups.find((p) => p.id === id);
   }
+  async getPickup(id: string) { return this.pickupOf(id) ?? null; }
   async requestPickup(travelGroupId: string, flightLegId: string | null) {
-    const existing = this.pickupOf(travelGroupId);
+    const existing = this.d.pickups.find((p) => p.flight_leg_id === flightLegId);
     if (existing) { existing.requested = true; existing.updated_at = nowIso(); return; }
     this.d.pickups.push({ id: uid(), travel_group_id: travelGroupId, flight_leg_id: flightLegId, requested: true, driver_user_id: null, driver_en_route: false, notes: null, created_at: nowIso(), updated_at: nowIso() });
   }
-  async claimPickup(travelGroupId: string, userId: string): Promise<ClaimResult> {
-    const p = this.pickupOf(travelGroupId);
+  async claimPickup(pickupId: string, userId: string): Promise<ClaimResult> {
+    const p = this.pickupOf(pickupId);
     if (!p) return { ok: false, claimedBy: null };
     if (p.driver_user_id) return { ok: false, claimedBy: p.driver_user_id };
     p.driver_user_id = userId; p.updated_at = nowIso();
     return { ok: true };
   }
-  async assignPickup(travelGroupId: string, driverUserId: string) {
-    const p = this.pickupOf(travelGroupId);
+  async assignPickup(pickupId: string, driverUserId: string) {
+    const p = this.pickupOf(pickupId);
     if (p) { p.driver_user_id = driverUserId; p.driver_en_route = false; p.updated_at = nowIso(); }
   }
-  async releasePickup(travelGroupId: string) {
-    const p = this.pickupOf(travelGroupId);
+  async releasePickup(pickupId: string) {
+    const p = this.pickupOf(pickupId);
     if (p) { p.driver_user_id = null; p.driver_en_route = false; p.updated_at = nowIso(); }
   }
-  async setPickupEnRoute(travelGroupId: string, enRoute: boolean) {
-    const p = this.pickupOf(travelGroupId);
+  async setPickupEnRoute(pickupId: string, enRoute: boolean) {
+    const p = this.pickupOf(pickupId);
     if (p) { p.driver_en_route = enRoute; p.updated_at = nowIso(); }
   }
 
@@ -322,6 +348,17 @@ class MemoryRepo implements Repo {
     };
     this.d.shopping.push(s);
     return this.shoppingView(s);
+  }
+  async addOrMergeShopping(input: NewShoppingInput) {
+    const existing = this.d.shopping.find((s) => !s.completed && s.category === input.category && s.item.trim().toLowerCase() === input.item.trim().toLowerCase());
+    if (existing) {
+      existing.quantity += Math.max(1, input.quantity);
+      existing.claimed_by ??= input.claimed_by ?? null;
+      existing.updated_at = nowIso();
+      return { id: existing.id };
+    }
+    const created = await this.addShopping(input);
+    return { id: created.id };
   }
   async setShoppingQuantity(id: string, quantity: number) {
     const s = this.d.shopping.find((x) => x.id === id);

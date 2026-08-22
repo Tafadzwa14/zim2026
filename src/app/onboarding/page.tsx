@@ -13,8 +13,9 @@ export default async function OnboardingPage() {
   // RosterUser is assignable to PublicUser, so nothing would flag the extra
   // field, but it would still ride into the client payload.
   const roster = (await getRepo().listRoster()).map((u) => {
-    const { phone_number: _phone, ...rest } = u;
+    const { phone_number: _phone, username: _username, roles: _roles, staying_at: _staying, prefs: _prefs, is_admin: _admin, status: _status, pin_reset_requested: _reset, created_at: _created, updated_at: _updated, ...rest } = u;
     void _phone;
+    void _username; void _roles; void _staying; void _prefs; void _admin; void _status; void _reset; void _created; void _updated;
     return rest;
   });
   const pending = roster.filter((u) => !u.claimed);

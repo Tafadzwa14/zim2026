@@ -1,6 +1,6 @@
 import "server-only";
 
-import { serverEnv } from "@/lib/env";
+import { serverEnv } from "@/lib/server-env";
 import type { PositionProvider } from "./provider";
 import type { FlightPosition } from "./types";
 
@@ -106,10 +106,9 @@ export class OpenSkyPositionProvider implements PositionProvider {
     flightNumber: string,
     date: string
   ): Promise<FlightPosition | null> {
-    // OpenSky only serves the live present; positions for a past/future date
-    // are not available from the free state-vector endpoint.
-    const today = new Date().toISOString().slice(0, 10);
-    if (date !== today) return null;
+    // OpenSky only serves the live present. Do not reject using the scheduled
+    // departure date: a long-haul flight can still be airborne the next day.
+    void date;
 
     const parsed = parseFlightNumber(flightNumber);
     if (!parsed) return null;

@@ -1,8 +1,9 @@
 // Zim 2026 service worker — offline support.
 //
 // Strategy:
-//   - Page navigations: network-first, falling back to the last-seen copy in the
-//     runtime cache, then to /offline.html when neither is reachable.
+//   - Page navigations: network-only, falling back to a generic offline page.
+//     Authenticated HTML is never cached, so a shared device cannot reveal the
+//     previous person's dashboard after sign-out.
 //   - Static build assets (/_next/static, icons, fonts, images): stale-while-
 //     revalidate, so they load instantly and refresh in the background.
 //   - Everything else same-origin (RSC payloads, API/action GETs) and every
@@ -11,7 +12,7 @@
 //
 // Bump CACHE_VERSION to invalidate old caches on the next activate.
 
-const CACHE_VERSION = "v1";
+const CACHE_VERSION = "v2";
 const SHELL_CACHE = `zc-shell-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `zc-runtime-${CACHE_VERSION}`;
 const OFFLINE_URL = "/offline.html";
@@ -68,16 +69,11 @@ async function staleWhileRevalidate(request) {
   return cached || network || fetch(request);
 }
 
-// Network-first for navigations, with cache and offline-page fallbacks.
+// Network-only for navigations, with a generic offline-page fallback.
 async function networkFirstNavigation(request) {
-  const cache = await caches.open(RUNTIME_CACHE);
   try {
-    const response = await fetch(request);
-    if (response && response.ok) cache.put(request, response.clone());
-    return response;
+    return await fetch(request);
   } catch {
-    const cached = await cache.match(request);
-    if (cached) return cached;
     const offline = await caches.match(OFFLINE_URL);
     return offline || Response.error();
   }

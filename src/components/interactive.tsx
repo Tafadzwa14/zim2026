@@ -401,14 +401,14 @@ export function ActivityFeed({ activity, meId }: { activity: ActivityView[]; meI
   );
 }
 
-export function PickupControl({ travelId, driver, meId, isAdmin, canDrive, drivers = [], big, enRoute }: { travelId: string; driver: PublicUser | null; meId: string; isAdmin: boolean; canDrive: boolean; drivers?: PublicUser[]; big?: boolean; enRoute?: boolean }) {
+export function PickupControl({ pickupId, driver, meId, isAdmin, canDrive, drivers = [], big, enRoute }: { pickupId: string; driver: PublicUser | null; meId: string; isAdmin: boolean; canDrive: boolean; drivers?: PublicUser[]; big?: boolean; enRoute?: boolean }) {
   const { run } = useAction();
   const [assigning, setAssigning] = useState(false);
   // Admins can hand the run to any eligible driver (other than the current one).
   const assignable = isAdmin ? drivers.filter((u) => u.id !== driver?.id) : [];
   const assign = (userId: string) => {
     setAssigning(false);
-    run(() => actions.assignPickup(travelId, userId));
+    run(() => actions.assignPickup(pickupId, userId));
   };
   const assignPicker = assignable.length > 0 && (
     <div className="flex w-full flex-col gap-2">
@@ -441,11 +441,11 @@ export function PickupControl({ travelId, driver, meId, isAdmin, canDrive, drive
         {enRoute && <span className="rounded-full bg-[color-mix(in_srgb,var(--good)_18%,transparent)] px-2 py-0.5 text-[11px] font-bold text-good">🚗 On the way</span>}
         <div className="ml-auto flex items-center gap-2">
           {canGo && (
-            <Btn variant={enRoute ? "outline" : "solid"} onClick={() => run(() => actions.setPickupEnRoute(travelId, !enRoute))}>
+            <Btn variant={enRoute ? "outline" : "solid"} onClick={() => run(() => actions.setPickupEnRoute(pickupId, !enRoute))}>
               {enRoute ? "Not yet" : "I'm on my way"}
             </Btn>
           )}
-          {canRelease && <Btn onClick={() => run(() => actions.releasePickup(travelId))}>{driver.id === meId ? "Release" : "Reopen"}</Btn>}
+          {canRelease && <Btn onClick={() => run(() => actions.releasePickup(pickupId))}>{driver.id === meId ? "Release" : "Reopen"}</Btn>}
         </div>
         {assignPicker}
       </div>
@@ -458,9 +458,9 @@ export function PickupControl({ travelId, driver, meId, isAdmin, canDrive, drive
     <div className="flex w-full flex-col gap-2">
       {canDrive &&
         (big ? (
-          <Btn variant="solid" className="w-full" onClick={() => run(() => actions.claimPickup(travelId))}>I&apos;ll pick them up</Btn>
+          <Btn variant="solid" className="w-full" onClick={() => run(() => actions.claimPickup(pickupId))}>I&apos;ll pick them up</Btn>
         ) : (
-          <Btn onClick={() => run(() => actions.claimPickup(travelId))}>I&apos;ll go</Btn>
+          <Btn onClick={() => run(() => actions.claimPickup(pickupId))}>I&apos;ll go</Btn>
         ))}
       {assignPicker}
     </div>

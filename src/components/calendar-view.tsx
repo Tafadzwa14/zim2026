@@ -25,7 +25,7 @@ export interface CalEvent {
   href?: string;
   /**
    * Ready-formatted clock time to show instead of the trip-time default, e.g.
-   * "5:45 PM AEST". Used for a flight that leaves or lands outside Zimbabwe,
+   * "17:45 AEST". Used for a flight that leaves or lands outside Zimbabwe,
    * where the trip-time reading is right but useless to the person catching it.
    * `date` and `time` stay in trip time, so the grid and the sort are unaffected.
    */

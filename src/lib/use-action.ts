@@ -1,17 +1,14 @@
 "use client";
 
 import { useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { useToast } from "@/components/providers";
 import type { ActionResult } from "@/lib/actions";
 
 /**
- * Runs a server action, toasts its result, and refreshes server components.
- * Works in both memory and Supabase modes (server action revalidates, then
- * router.refresh re-renders).
+ * Runs a server action and toasts its result. Successful actions revalidate
+ * their affected routes on the server, so the returned UI is already fresh.
  */
 export function useAction() {
-  const router = useRouter();
   const toast = useToast();
   const [pending, startTransition] = useTransition();
 
@@ -28,7 +25,6 @@ export function useAction() {
         }
         if (res && res.message && !opts?.silent) toast(res.message);
         opts?.onSuccess?.(res);
-        router.refresh();
       } catch (err) {
         const message = err instanceof Error && err.message ? err.message : "try again";
         toast(`Couldn't update — ${message}`, "⚠️");

@@ -7,9 +7,9 @@ import { EMOJIS } from "@/lib/display";
 import { useAction } from "@/lib/use-action";
 import * as actions from "@/lib/actions";
 import { Spinner } from "@/components/ui";
-import type { PublicUser } from "@/lib/types";
+type OnboardingUser = { id: string; name: string; emoji: string; claimed: boolean };
 
-export function OnboardingClient({ pending, claimed }: { pending: PublicUser[]; claimed: PublicUser[] }) {
+export function OnboardingClient({ pending, claimed }: { pending: OnboardingUser[]; claimed: OnboardingUser[] }) {
   const router = useRouter();
   const { run, pending: busy } = useAction();
   const [mode, setMode] = useState<"claim" | "reclaim">("claim");
@@ -17,6 +17,7 @@ export function OnboardingClient({ pending, claimed }: { pending: PublicUser[]; 
   const [emoji, setEmoji] = useState("🏎️");
   const [search, setSearch] = useState("");
   const [pin, setPin] = useState(["", "", "", ""]);
+  const [claimCode, setClaimCode] = useState("");
   const [rUser, setRUser] = useState("");
   const [rPin, setRPin] = useState(["", "", "", ""]);
   const pinRefs = useRef<(HTMLInputElement | null)[]>([]);
@@ -80,7 +81,7 @@ export function OnboardingClient({ pending, claimed }: { pending: PublicUser[]; 
               <p className="mt-1.5 text-sm text-muted">Ask whoever set up the app to add you to the family list, then come back here to choose your emoji and PIN.</p>
             </div>
           ) : (
-            <form onSubmit={(e) => { e.preventDefault(); run(() => actions.claimIdentity({ userId, emoji, pin: pin.join("") }), { onSuccess: () => router.push("/") }); }}>
+            <form onSubmit={(e) => { e.preventDefault(); run(() => actions.claimIdentity({ userId, emoji, pin: pin.join(""), claimCode }), { onSuccess: () => router.push("/") }); }}>
               <label className="zc-label">Who are you?</label>
               <select
                 className="zc-input"
@@ -107,6 +108,8 @@ export function OnboardingClient({ pending, claimed }: { pending: PublicUser[]; 
 
               <label className="zc-label">Set a 4-digit PIN</label>
               {pinBox(pin, setPin, pinRefs)}
+              <label className="zc-label">One-time invite code</label>
+              <input className="zc-input" autoComplete="one-time-code" value={claimCode} onChange={(e) => setClaimCode(e.target.value)} placeholder="Paste the code your admin sent" />
               <p className="text-xs text-muted">Your PIN lets you reclaim your identity on another device. Stored hashed, never in plain text.</p>
               <button className="zc-btn mt-5 w-full" disabled={busy || !chosen}>{busy && <Spinner />}{busy ? "Entering…" : "Enter Zim 2026 →"}</button>
             </form>
@@ -117,12 +120,12 @@ export function OnboardingClient({ pending, claimed }: { pending: PublicUser[]; 
             <p className="mt-1.5 text-sm text-muted">Once someone has set up their identity, they can pick their name here to sign back in.</p>
           </div>
         ) : (
-          <form onSubmit={(e) => { e.preventDefault(); run(() => actions.reclaimIdentity({ username: rUser, pin: rPin.join("") }), { onSuccess: () => router.push("/") }); }}>
+          <form onSubmit={(e) => { e.preventDefault(); run(() => actions.reclaimIdentity({ userId: rUser, pin: rPin.join("") }), { onSuccess: () => router.push("/") }); }}>
             <label className="zc-label">Who are you?</label>
             <select className="zc-input" value={rUser} onChange={(e) => setRUser(e.target.value)}>
               <option value="" disabled>Pick your name…</option>
               {claimed.map((u) => (
-                <option key={u.id} value={u.username}>{u.emoji} {u.name}</option>
+                <option key={u.id} value={u.id}>{u.emoji} {u.name}</option>
               ))}
             </select>
             <label className="zc-label">4-digit PIN</label>

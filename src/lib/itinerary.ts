@@ -1,7 +1,7 @@
 import "server-only";
 
 import OpenAI from "openai";
-import { serverEnv } from "@/lib/env";
+import { serverEnv } from "@/lib/server-env";
 import { airportLocalToUtcIso } from "@/lib/itinerary-time";
 
 /** One flight segment as read from an itinerary PDF. A layover is just the

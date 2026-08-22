@@ -41,6 +41,10 @@ Downloads); section 39A is the approved design system.
   navy hero. Greens are semantic status only. No Zimbabwe flag motif or flag
   palette (removed at design review).
 - Australian English in copy. Concise, friendly, family tone (spec 69).
+- Clocks are 24-hour everywhere, zero-padded (`06:45`, `19:05`). Format
+  through `fmtTime`/`fmtTimeIn`/`fmtAirportTime` rather than a fresh
+  `Intl.DateTimeFormat`; never render a dayPeriod. Parsing an itinerary's
+  AM/PM input text is a separate concern (`itinerary-local.ts`).
 
 ## Layout
 

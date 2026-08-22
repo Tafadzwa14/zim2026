@@ -1,5 +1,5 @@
 import { airportZone, AIRPORTS } from "@/lib/airports";
-import { fmtTime, isoToZonedInput, TRIP_TZ, zonedInputToIso } from "@/lib/format";
+import { fmtTime, fmtTimeIn, isoToZonedInput, TRIP_TZ, zonedInputToIso } from "@/lib/format";
 import type { TravelView } from "@/lib/repo/types";
 import type { FlightLeg } from "@/lib/types";
 
@@ -48,17 +48,9 @@ export function airportCity(iata: string | null | undefined, fallback: string | 
   return fallback ?? AIRPORTS[iata.toUpperCase()]?.city ?? iata;
 }
 
+/** Clock time at an airport, in its own zone, 24-hour, e.g. `06:30`. */
 export function fmtAirportTime(iso: string | null, airport: string | null | undefined): string {
-  if (!iso) return "";
-  const tz = airportZone(airport) ?? TRIP_TZ;
-  const f = new Intl.DateTimeFormat("en-GB", {
-    timeZone: tz,
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).formatToParts(new Date(iso));
-  const get = (t: string) => f.find((p) => p.type === t)?.value ?? "";
-  return `${get("hour")}:${get("minute")} ${get("dayPeriod").toUpperCase()}`;
+  return fmtTimeIn(iso, airportZone(airport) ?? TRIP_TZ);
 }
 
 export function isoToAirportInput(iso: string | null | undefined, airport: string | null | undefined): string {

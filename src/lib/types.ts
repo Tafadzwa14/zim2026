@@ -41,6 +41,10 @@ export interface User {
   username: string;
   emoji: string;
   pin_hash: string;
+  /** Rotated to invalidate every outstanding signed session for this user. */
+  session_version: number;
+  /** HMAC of the one-time claim code; never exposed to clients. */
+  claim_token_hash: string | null;
   is_admin: boolean;
   status: LocationStatus;
   roles: string[];
@@ -65,7 +69,7 @@ export const ROLES: { slug: Role; label: string; emoji: string }[] = [
 ];
 
 /** Public projection of a user; never includes pin_hash or phone_number. */
-export type PublicUser = Omit<User, "pin_hash" | "phone_number">;
+export type PublicUser = Omit<User, "pin_hash" | "phone_number" | "session_version" | "claim_token_hash">;
 
 export interface Plan {
   id: string;
@@ -76,7 +80,7 @@ export interface Plan {
   start_time: string | null; // HH:mm
   location: string | null;
   anyone_can_join: boolean;
-  created_by: string;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -85,7 +89,7 @@ export interface PlanAttendee {
   id: string;
   plan_id: string;
   user_id: string;
-  added_by: string;
+  added_by: string | null;
   created_at: string;
 }
 
@@ -96,7 +100,7 @@ export interface TravelGroup {
   accommodation: string | null;
   luggage_notes: string | null;
   general_notes: string | null;
-  created_by: string;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -156,7 +160,7 @@ export interface ShoppingItem {
   quantity: number;
   category: string;
   notes: string | null;
-  created_by: string;
+  created_by: string | null;
   claimed_by: string | null;
   completed: boolean;
   completed_at: string | null;
@@ -170,7 +174,7 @@ export interface Task {
   notes: string | null;
   due_date: string | null;
   due_time: string | null;
-  created_by: string;
+  created_by: string | null;
   assigned_to: string | null;
   completed: boolean;
   completed_at: string | null;
@@ -208,7 +212,7 @@ export interface Announcement {
   is_pinned: boolean;
   starts_at: string | null;
   expires_at: string | null;
-  created_by: string;
+  created_by: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -235,7 +239,7 @@ export type ActivityType =
 
 export interface Activity {
   id: string;
-  actor_user_id: string;
+  actor_user_id: string | null;
   type: string;
   entity_type: string | null;
   entity_id: string | null;
@@ -268,7 +272,7 @@ export interface PollVote {
 }
 
 export interface AppSettings {
-  id: string;
+  id: boolean;
   app_title: string;
   wedding_date: string;
   wedding_url: string;

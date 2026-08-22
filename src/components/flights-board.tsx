@@ -6,12 +6,14 @@ import { useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
 import { flightStatusMeta } from "@/lib/display";
 import { fmtDayShortUpper, tripDateOf, tripTodayISO } from "@/lib/format";
+import { airportRunsFor, pickupForLeg, type AirportRun } from "@/lib/travel";
 import {
   currentLeg,
   dualTimeLabel,
   finalLeg,
   fmtAirportTime,
   legArrival,
+  legDeparture,
   pickupLeaveBy,
   tripRouteLabel,
 } from "@/lib/flight-view";
@@ -23,6 +25,14 @@ import type { TravelView } from "@/lib/repo/types";
 import type { PublicUser } from "@/lib/types";
 
 type BoardFilter = "all" | "today" | "air" | "pickups";
+
+function touchesDate(t: TravelView, date: string): boolean {
+  return t.legs.some((leg) => {
+    const departure = legDeparture(leg);
+    const arrival = legArrival(leg);
+    return (departure ? tripDateOf(departure) === date : false) || (arrival ? tripDateOf(arrival) === date : false);
+  });
+}
 
 function Row({ t }: { t: TravelView }) {
   const leg = currentLeg(t);
@@ -52,10 +62,13 @@ function Row({ t }: { t: TravelView }) {
   );
 }
 
-function PickupCard({ t, me, users }: { t: TravelView; me: PublicUser; users: PublicUser[] }) {
-  const leg = finalLeg(t) ?? currentLeg(t);
-  const arrival = legArrival(leg) ?? t.arrivalIso;
-  const driver = t.pickup?.driver_user_id ? users.find((u) => u.id === t.pickup?.driver_user_id) ?? null : null;
+function PickupCard({ run, me, users }: { run: AirportRun; me: PublicUser; users: PublicUser[] }) {
+  const t = run.trip;
+  const leg = run.leg;
+  const pickup = pickupForLeg(t, leg.id);
+  if (!pickup) return null;
+  const arrival = legArrival(leg) ?? run.hreIso;
+  const driver = pickup.driver_user_id ? users.find((u) => u.id === pickup.driver_user_id) ?? null : null;
   const drivers = users.filter((u) => u.is_admin || u.roles.includes("driver"));
   const leaveBy = pickupLeaveBy(arrival);
   const delayed = (leg?.delay_minutes ?? 0) > 0;
@@ -75,12 +88,12 @@ function PickupCard({ t, me, users }: { t: TravelView; me: PublicUser; users: Pu
         </div>
         <div className="rounded-xl bg-chip px-2 py-2">
           <div className="mono text-[11px] font-bold text-muted">Status</div>
-          <div className={cn("text-sm font-extrabold", driver ? "text-good" : "text-warn")}>{driver ? (t.pickup?.driver_en_route ? "On the way" : "Claimed") : "Driver needed"}</div>
+          <div className={cn("text-sm font-extrabold", driver ? "text-good" : "text-warn")}>{driver ? (pickup.driver_en_route ? "On the way" : "Claimed") : "Driver needed"}</div>
         </div>
       </div>
       {delayed && <div className="mt-2 rounded-xl bg-[color-mix(in_srgb,var(--warn)_14%,transparent)] px-3 py-2 text-xs font-bold text-warn">Flight delayed {leg?.delay_minutes} min. Driver can wait before leaving.</div>}
       <div className="mt-3">
-        <PickupControl travelId={t.id} driver={driver} meId={me.id} isAdmin={me.is_admin} canDrive={me.is_admin || me.roles.includes("driver")} drivers={drivers} big={!driver} enRoute={t.pickup?.driver_en_route} />
+        <PickupControl pickupId={pickup.id} driver={driver} meId={me.id} isAdmin={me.is_admin} canDrive={me.is_admin || me.roles.includes("driver")} drivers={drivers} big={!driver} enRoute={pickup.driver_en_route} />
       </div>
     </div>
   );
@@ -102,16 +115,16 @@ export function FlightsBoard({ travel, me, users }: { travel: TravelView[]; me: 
   const groups = useMemo(() => {
     const today = tripTodayISO();
     const air = travel.filter((t) => t.legs.some((l) => l.status === "air"));
-    const todayFlights = travel.filter((t) => !air.includes(t) && t.arrivalIso && tripDateOf(t.arrivalIso) === today);
+    const todayFlights = travel.filter((t) => !air.includes(t) && touchesDate(t, today));
     const upcoming = travel.filter((t) => t.status === "upcoming" && !todayFlights.includes(t));
     const landed = travel.filter((t) => t.status === "arrived");
-    const runs = travel.filter((t) => t.pickup?.requested && t.status !== "arrived");
+    const runs = travel.flatMap((t) => t.status === "arrived" ? [] : airportRunsFor(t).filter((r) => r.kind === "pickup" && pickupForLeg(t, r.leg.id)));
     return { air, todayFlights, upcoming, landed, runs };
   }, [travel]);
 
   const filters: { key: BoardFilter; label: string; n: number }[] = [
     { key: "all", label: "All", n: travel.length },
-    { key: "today", label: "Today", n: groups.todayFlights.length + groups.air.filter((t) => t.arrivalIso && tripDateOf(t.arrivalIso) === tripTodayISO()).length },
+    { key: "today", label: "Today", n: groups.todayFlights.length + groups.air.filter((t) => touchesDate(t, tripTodayISO())).length },
     { key: "air", label: "In air", n: groups.air.length },
     { key: "pickups", label: "Pickups", n: groups.runs.length },
   ];
@@ -148,7 +161,7 @@ export function FlightsBoard({ travel, me, users }: { travel: TravelView[]; me: 
       {showRuns && groups.runs.length > 0 && (
         <>
           <SectionHeader meta={String(groups.runs.length)}>Airport runs 🚗</SectionHeader>
-          <div className="grid gap-3 md:grid-cols-2">{groups.runs.map((t) => <PickupCard key={t.id} t={t} me={me} users={users} />)}</div>
+          <div className="grid gap-3 md:grid-cols-2">{groups.runs.map((run) => <PickupCard key={run.id} run={run} me={me} users={users} />)}</div>
         </>
       )}
 

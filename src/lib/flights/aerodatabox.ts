@@ -1,7 +1,7 @@
 import "server-only";
 
 import type { FlightStatus } from "@/lib/types";
-import { serverEnv } from "@/lib/env";
+import { serverEnv } from "@/lib/server-env";
 import type { FlightProvider } from "./provider";
 import type {
   FlightEndpoint,
@@ -96,7 +96,7 @@ function toResult(f: AdbFlight): FlightSearchResult {
 
 function delayMinutes(f: FlightSearchResult): number | null {
   const sched = f.arrival.scheduledTime;
-  const est = f.arrival.estimatedTime ?? f.arrival.actualTime;
+  const est = f.arrival.actualTime ?? f.arrival.estimatedTime;
   if (!sched || !est) return null;
   const diff = (new Date(est).getTime() - new Date(sched).getTime()) / 60000;
   return Math.round(diff);
@@ -136,10 +136,18 @@ export class AeroDataBoxProvider implements FlightProvider {
 
   async getFlightStatus(
     flightNumber: string,
-    date: string
+    date: string,
+    match?: { origin?: string; destination?: string; providerFlightId?: string | null },
   ): Promise<FlightStatusResult | null> {
     const results = await this.searchFlight(flightNumber, date);
-    const base = results[0];
+    const base = results.find((r) =>
+      (!match?.origin || r.departure.airport === match.origin) &&
+      (!match?.destination || r.arrival.airport === match.destination) &&
+      (!match?.providerFlightId || r.providerFlightId === match.providerFlightId),
+    ) ?? results.find((r) =>
+      (!match?.origin || r.departure.airport === match.origin) &&
+      (!match?.destination || r.arrival.airport === match.destination),
+    ) ?? results[0];
     if (!base) return null;
     return {
       ...base,

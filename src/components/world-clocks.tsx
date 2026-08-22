@@ -61,12 +61,14 @@ export function WorldClocks({
 function clockTime(now: Date | null, zone: string | null): string {
   if (!now || !zone) return "—";
   try {
-    // en-US for uppercase AM/PM, matching the app's fmtTime house style.
-    return new Intl.DateTimeFormat("en-US", {
+    // 24-hour, like every other time in the app (see fmtTimeIn). Formatted here
+    // rather than through fmtTimeIn because these clocks tick off a live Date
+    // rather than a stored instant.
+    return new Intl.DateTimeFormat("en-GB", {
       timeZone: zone,
-      hour: "numeric",
+      hour: "2-digit",
       minute: "2-digit",
-      hour12: true,
+      hourCycle: "h23",
     }).format(now);
   } catch {
     return "—";

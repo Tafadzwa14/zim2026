@@ -2,7 +2,7 @@ import { getRepo } from "@/lib/repo";
 import { getCurrentUser } from "@/lib/identity";
 import { categoryOf, GOGO_BIRTHDAY, WEDDING_TIME } from "@/lib/display";
 import { fmtTime24, fmtTimeIn, fmtZoneLabel, tripDateOf, tripTodayISO, TRIP_TZ } from "@/lib/format";
-import { airportRunsFor, HARARE, legArrival, legDeparture, orderedLegs } from "@/lib/travel";
+import { airportRunsFor, HARARE, legArrival, legDeparture, orderedLegs, pickupForLeg } from "@/lib/travel";
 import { airportZone } from "@/lib/airports";
 import { Screen } from "@/components/ui";
 import { CalendarView, type CalEvent } from "@/components/calendar-view";
@@ -10,7 +10,7 @@ import { CalendarView, type CalEvent } from "@/components/calendar-view";
 export const dynamic = "force-dynamic";
 
 /**
- * The clock time at the airport itself, with its zone, e.g. "5:45 PM AEST".
+ * The clock time at the airport itself, with its zone, e.g. "17:45 AEST".
  * Undefined when the airport already runs on trip time or we don't know its
  * zone, so those rows keep the plain trip-time reading and gain no useless
  * label. Only the display changes: the event still sits on its trip-time date.
@@ -66,7 +66,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
     const finalLeg = legs[legs.length - 1];
 
     const out = legDeparture(legs[0]);
-    if (out) {
+    if (out && legs[0].origin_airport.trim().toUpperCase() !== HARARE) {
       evs.push({
         id: `depart-${t.id}`, kind: "travel", date: tripDateOf(out), time: fmtTime24(out),
         displayTime: airportClock(out, legs[0].origin_airport),
@@ -87,7 +87,7 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
         title: `${t.title} ${arriving ? "arrive in Harare" : "leave Harare"}${run.cancelled ? " (cancelled)" : ""}`,
         href,
       });
-      if (arriving && !run.cancelled && t.pickup?.requested) {
+      if (arriving && !run.cancelled && pickupForLeg(t, run.leg.id)) {
         evs.push({ id: `pickup-${run.id}`, kind: "pickup", date, time, icon: "🚗", title: `Airport pickup, ${t.title}`, href });
       }
     }

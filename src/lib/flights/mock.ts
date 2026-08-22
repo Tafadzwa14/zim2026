@@ -1,5 +1,6 @@
 import type { FlightProvider } from "./provider";
 import type { FlightSearchResult, FlightStatusResult } from "./types";
+import { airportLocalToUtcIso } from "@/lib/itinerary-time";
 
 interface DemoFlight {
   airlineName: string;
@@ -56,12 +57,12 @@ function build(flightNumber: string, date: string): FlightSearchResult | null {
     airlineCode: d.airlineCode,
     departure: {
       airport: d.originAirport, city: d.originCity,
-      scheduledTime: `${date}T${d.depTime}:00`, estimatedTime: `${date}T${d.depTime}:00`,
+      scheduledTime: airportLocalToUtcIso(`${date}T${d.depTime}`, d.originAirport), estimatedTime: airportLocalToUtcIso(`${date}T${d.depTime}`, d.originAirport),
       actualTime: null, terminal: d.depTerminal, gate: null,
     },
     arrival: {
       airport: d.destAirport, city: d.destCity,
-      scheduledTime: `${date}T${d.arrTime}:00`, estimatedTime: `${date}T${d.arrTime}:00`,
+      scheduledTime: airportLocalToUtcIso(`${date}T${d.arrTime}`, d.destAirport), estimatedTime: airportLocalToUtcIso(`${date}T${d.arrTime}`, d.destAirport),
       actualTime: null, terminal: null, gate: null,
     },
     aircraftType: d.aircraftType,
@@ -85,6 +86,6 @@ export class MockFlightProvider implements FlightProvider {
   ): Promise<FlightStatusResult | null> {
     const r = build(flightNumber, date);
     if (!r) return null;
-    return { ...r, progress: 0, delayMinutes: 0, lastUpdated: `${date}T00:00:00` };
+    return { ...r, progress: 0, delayMinutes: 0, lastUpdated: `${date}T00:00:00Z` };
   }
 }

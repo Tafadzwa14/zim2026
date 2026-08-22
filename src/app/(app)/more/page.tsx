@@ -16,7 +16,7 @@ export default async function MorePage() {
     repo.listTasks(),
     me ? repo.listPolls(me.id) : Promise.resolve([]),
   ]);
-  const openPickups = travel.filter((t) => t.pickup?.requested && !t.pickup.driver_user_id).length;
+  const openPickups = travel.flatMap((t) => t.pickups).filter((p) => p.requested && !p.driver_user_id).length;
   const openShopping = shopping.filter((s) => !s.completed).length;
   const openTasks = tasks.filter((t) => !t.completed).length;
   const openPolls = polls.filter((p) => !p.closed).length;

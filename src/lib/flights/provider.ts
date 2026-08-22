@@ -20,7 +20,8 @@ export interface FlightProvider {
   /** Latest status for a flight number on a date. Null if not found. */
   getFlightStatus(
     flightNumber: string,
-    date: string
+    date: string,
+    match?: { origin?: string; destination?: string; providerFlightId?: string | null },
   ): Promise<FlightStatusResult | null>;
 
   /** Live position, if the provider supports it. */
