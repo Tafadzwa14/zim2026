@@ -78,7 +78,7 @@ class MemoryRepo implements Repo {
     const memberIds = this.d.members.filter((m) => m.travel_group_id === tg.id).map((m) => m.user_id);
     const active = this.activeLeg(legs);
     const last = legs[legs.length - 1] ?? null;
-    const pickups = this.d.pickups.filter((p) => p.travel_group_id === tg.id);
+    const pickups = this.d.pickups.filter((p) => p.travel_group_id === tg.id && p.requested);
     const pickup = pickups.find((p) => p.flight_leg_id === last?.id) ?? null;
     return {
       ...tg,
@@ -286,10 +286,8 @@ class MemoryRepo implements Repo {
       this.d.legs.push(leg);
       if (l.destination_airport.trim().toUpperCase() === "HRE") pickupLegIds.push(leg.id);
     }
-    if (input.pickup) {
-      for (const flightLegId of pickupLegIds) {
-        this.d.pickups.push({ id: uid(), travel_group_id: tg.id, flight_leg_id: flightLegId, requested: true, driver_user_id: null, driver_en_route: false, notes: null, created_at: nowIso(), updated_at: nowIso() });
-      }
+    for (const flightLegId of pickupLegIds) {
+      this.d.pickups.push({ id: uid(), travel_group_id: tg.id, flight_leg_id: flightLegId, requested: input.pickup, driver_user_id: null, driver_en_route: false, notes: null, created_at: nowIso(), updated_at: nowIso() });
     }
     return this.travelView(tg);
   }
@@ -310,10 +308,15 @@ class MemoryRepo implements Repo {
     return this.d.pickups.find((p) => p.id === id);
   }
   async getPickup(id: string) { return this.pickupOf(id) ?? null; }
-  async requestPickup(travelGroupId: string, flightLegId: string | null) {
+  async setPickupRequested(travelGroupId: string, flightLegId: string, requested: boolean) {
     const existing = this.d.pickups.find((p) => p.flight_leg_id === flightLegId);
-    if (existing) { existing.requested = true; existing.updated_at = nowIso(); return; }
-    this.d.pickups.push({ id: uid(), travel_group_id: travelGroupId, flight_leg_id: flightLegId, requested: true, driver_user_id: null, driver_en_route: false, notes: null, created_at: nowIso(), updated_at: nowIso() });
+    if (existing) {
+      existing.requested = requested;
+      if (!requested) { existing.driver_user_id = null; existing.driver_en_route = false; }
+      existing.updated_at = nowIso();
+      return;
+    }
+    this.d.pickups.push({ id: uid(), travel_group_id: travelGroupId, flight_leg_id: flightLegId, requested, driver_user_id: null, driver_en_route: false, notes: null, created_at: nowIso(), updated_at: nowIso() });
   }
   async claimPickup(pickupId: string, userId: string): Promise<ClaimResult> {
     const p = this.pickupOf(pickupId);

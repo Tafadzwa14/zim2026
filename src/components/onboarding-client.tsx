@@ -12,7 +12,7 @@ type OnboardingUser = { id: string; name: string; emoji: string; claimed: boolea
 export function OnboardingClient({ pending, claimed }: { pending: OnboardingUser[]; claimed: OnboardingUser[] }) {
   const router = useRouter();
   const { run, pending: busy } = useAction();
-  const [mode, setMode] = useState<"claim" | "reclaim">("claim");
+  const [mode, setMode] = useState<"claim" | "reclaim">(claimed.length ? "reclaim" : "claim");
   const [userId, setUserId] = useState("");
   const [emoji, setEmoji] = useState("🏎️");
   const [search, setSearch] = useState("");
@@ -69,7 +69,7 @@ export function OnboardingClient({ pending, claimed }: { pending: OnboardingUser
         <div className="mb-4 flex gap-1.5 rounded-2xl bg-chip p-1">
           {(["claim", "reclaim"] as const).map((m) => (
             <button key={m} onClick={() => setMode(m)} className={cn("flex-1 rounded-xl py-2 text-[13px] font-extrabold", mode === m ? "bg-card text-ink shadow-sm" : "text-ink2")}>
-              {m === "claim" ? "I'm new" : "Reclaim identity"}
+              {m === "claim" ? "I'm new" : "Sign in"}
             </button>
           ))}
         </div>
@@ -130,7 +130,7 @@ export function OnboardingClient({ pending, claimed }: { pending: OnboardingUser
             </select>
             <label className="zc-label">4-digit PIN</label>
             {pinBox(rPin, setRPin, rPinRefs)}
-            <button className="zc-btn mt-5 w-full" disabled={busy || !rUser}>{busy && <Spinner />}{busy ? "Restoring…" : "Restore identity"}</button>
+            <button className="zc-btn mt-5 w-full" disabled={busy || !rUser}>{busy && <Spinner />}{busy ? "Signing in…" : "Sign in"}</button>
             <button
               type="button"
               disabled={busy || !rUser}

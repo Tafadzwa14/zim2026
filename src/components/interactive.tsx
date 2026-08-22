@@ -467,6 +467,19 @@ export function PickupControl({ pickupId, driver, meId, isAdmin, canDrive, drive
   );
 }
 
+export function PickupRequirementAdmin({ travelId, legId, required }: { travelId: string; legId: string; required: boolean }) {
+  const { run, pending } = useAction();
+  return (
+    <Btn
+      variant={required ? "danger" : "outline"}
+      disabled={pending}
+      onClick={() => run(() => actions.setPickupRequired(travelId, legId, !required))}
+    >
+      {pending ? "Saving…" : required ? "Disable airport pickup" : "Enable airport pickup"}
+    </Btn>
+  );
+}
+
 export function PlanJoinButton({ planId, going, className }: { planId: string; going: boolean; className?: string }) {
   const { run } = useAction();
   return going ? (

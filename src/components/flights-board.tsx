@@ -10,11 +10,9 @@ import { airportRunsFor, pickupForLeg, type AirportRun } from "@/lib/travel";
 import {
   currentLeg,
   dualTimeLabel,
-  finalLeg,
   fmtAirportTime,
   legArrival,
   legDeparture,
-  pickupLeaveBy,
   tripRouteLabel,
 } from "@/lib/flight-view";
 import { FlightCard } from "@/components/flight-card";
@@ -36,12 +34,11 @@ function touchesDate(t: TravelView, date: string): boolean {
 
 function Row({ t }: { t: TravelView }) {
   const leg = currentLeg(t);
-  const last = finalLeg(t);
   if (!leg) return null;
   const meta = flightStatusMeta(leg.status);
   const air = leg.status === "air";
   const late = leg.status !== "landed" && (leg.delay_minutes ?? 0) > 0;
-  const arrival = legArrival(last) ?? t.arrivalIso;
+  const arrival = legArrival(leg);
   const route = tripRouteLabel(t);
   const legNote = t.legs.length > 1 ? `${leg.flight_number} now · ${leg.origin_airport}→${leg.destination_airport}` : `${leg.flight_number} · ${route}`;
 
@@ -53,7 +50,7 @@ function Row({ t }: { t: TravelView }) {
         <span className="mono block truncate text-[10.5px] text-muted">{route} · {legNote}</span>
       </span>
       <span className="text-right">
-        <span className="mono block text-[15px] font-semibold">{leg.status === "scheduled" ? fmtDayShortUpper(arrival) : fmtAirportTime(arrival, last?.destination_airport)}</span>
+        <span className="mono block text-[15px] font-semibold">{leg.status === "scheduled" ? fmtDayShortUpper(arrival) : fmtAirportTime(arrival, leg.destination_airport)}</span>
         <span className={cn("mono block text-[9.5px] font-semibold uppercase", air ? "text-good" : leg.status === "landed" ? "text-[#5f86a8]" : late ? "text-warn" : "text-honey")}>
           {air ? "In air" : meta.label}{late ? ` · ${leg.delay_minutes}m late` : ""}
         </span>
@@ -70,29 +67,22 @@ function PickupCard({ run, me, users }: { run: AirportRun; me: PublicUser; users
   const arrival = legArrival(leg) ?? run.hreIso;
   const driver = pickup.driver_user_id ? users.find((u) => u.id === pickup.driver_user_id) ?? null : null;
   const drivers = users.filter((u) => u.is_admin || u.roles.includes("driver"));
-  const leaveBy = pickupLeaveBy(arrival);
   const delayed = (leg?.delay_minutes ?? 0) > 0;
 
   return (
-    <div className={cn("zc-card p-4", !driver && "border-[color-mix(in_srgb,var(--warn)_42%,var(--line))]")}>
+    <div className={cn("zc-card p-3", !driver && "border-[color-mix(in_srgb,var(--warn)_42%,var(--line))]")}>
       <div className="flex items-baseline justify-between gap-3">
         <div className="mono min-w-0 font-semibold">{fmtDayShortUpper(arrival)} · {fmtAirportTime(arrival, leg?.destination_airport)}</div>
         {leg && <CatPill icon="✈️" label={leg.flight_number} />}
       </div>
-      <div className="disp my-2 text-lg font-extrabold">{t.members.map((m) => m.emoji).join(" ")} {t.title}</div>
+      <div className="disp my-1.5 text-[17px] font-extrabold">{t.members.map((m) => m.emoji).join(" ")} {t.title}</div>
       {leg && <div className="mono text-[11px] text-muted">{leg.origin_city} → {leg.destination_city} · {dualTimeLabel(arrival, leg.destination_airport)}</div>}
-      <div className="mt-3 grid grid-cols-2 gap-2 text-center">
-        <div className="rounded-xl bg-chip px-2 py-2">
-          <div className="mono text-[11px] font-bold text-muted">Target</div>
-          <div className="text-sm font-extrabold">{leaveBy ? fmtAirportTime(leaveBy, leg?.destination_airport) : "TBC"}</div>
-        </div>
-        <div className="rounded-xl bg-chip px-2 py-2">
-          <div className="mono text-[11px] font-bold text-muted">Status</div>
-          <div className={cn("text-sm font-extrabold", driver ? "text-good" : "text-warn")}>{driver ? (pickup.driver_en_route ? "On the way" : "Claimed") : "Driver needed"}</div>
-        </div>
+      <div className="mt-2 flex items-center justify-between rounded-xl bg-chip px-3 py-1.5">
+        <div className="mono text-[10.5px] font-bold text-muted">Status</div>
+        <div className={cn("text-[13px] font-extrabold", driver ? "text-good" : "text-warn")}>{driver ? (pickup.driver_en_route ? "On the way" : "Claimed") : "Driver needed"}</div>
       </div>
       {delayed && <div className="mt-2 rounded-xl bg-[color-mix(in_srgb,var(--warn)_14%,transparent)] px-3 py-2 text-xs font-bold text-warn">Flight delayed {leg?.delay_minutes} min. Driver can wait before leaving.</div>}
-      <div className="mt-3">
+      <div className="mt-2.5">
         <PickupControl pickupId={pickup.id} driver={driver} meId={me.id} isAdmin={me.is_admin} canDrive={me.is_admin || me.roles.includes("driver")} drivers={drivers} big={!driver} enRoute={pickup.driver_en_route} />
       </div>
     </div>

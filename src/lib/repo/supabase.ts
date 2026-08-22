@@ -75,9 +75,19 @@ function requireRow<T>(data: T | null | undefined, error: { message?: string } |
   return data;
 }
 
+function missingSecurityMigration(error: { code?: string; message?: string } | null | undefined): boolean {
+  return Boolean(
+    error &&
+    (error.code === "42703" || error.code === "42883" || error.code === "PGRST202" ||
+      error.message?.includes("session_version") || error.message?.includes("consume_auth_attempt")),
+  );
+}
+
 class SupabaseRepo implements Repo {
   readonly kind = "supabase" as const;
   private sb: SupabaseClient;
+  /** Temporary process-local protection while a deployment is awaiting 0009. */
+  private legacyAuthAttempts = new Map<string, { attempts: number; startedAt: number; blockedUntil: number }>();
   constructor() {
     this.sb = createAdminSupabase();
   }
@@ -112,11 +122,22 @@ class SupabaseRepo implements Repo {
   }
   async getUserWithPin(id: string) {
     const { data, error } = await this.sb.from("users").select("id,pin_hash,session_version").eq("id", id).maybeSingle();
+    if (missingSecurityMigration(error)) {
+      const legacy = await this.sb.from("users").select("id,pin_hash").eq("id", id).maybeSingle();
+      throwIfDbError(legacy.error, "Identity could not be read");
+      const row = legacy.data as { id: string; pin_hash: string } | null;
+      return row ? { ...row, session_version: 0 } : null;
+    }
     throwIfDbError(error, "Identity could not be read");
     return (data as { id: string; pin_hash: string; session_version: number }) ?? null;
   }
   async getSessionVersion(id: string) {
     const { data, error } = await this.sb.from("users").select("session_version").eq("id", id).maybeSingle();
+    if (missingSecurityMigration(error)) {
+      const legacy = await this.sb.from("users").select("id").eq("id", id).maybeSingle();
+      throwIfDbError(legacy.error, "Session could not be checked");
+      return legacy.data ? 0 : null;
+    }
     throwIfDbError(error, "Session could not be checked");
     return (data as { session_version: number } | null)?.session_version ?? null;
   }
@@ -172,11 +193,25 @@ class SupabaseRepo implements Repo {
   }
   async consumeAuthAttempt(key: string) {
     const { data, error } = await this.sb.rpc("consume_auth_attempt", { p_key: key });
+    if (missingSecurityMigration(error)) {
+      const now = Date.now();
+      const current = this.legacyAuthAttempts.get(key);
+      const row = !current || current.startedAt < now - 15 * 60_000
+        ? { attempts: 1, startedAt: now, blockedUntil: 0 }
+        : { ...current, attempts: current.attempts + 1 };
+      if (row.attempts > 5) row.blockedUntil = Math.max(row.blockedUntil, now + 15 * 60_000);
+      this.legacyAuthAttempts.set(key, row);
+      return row.blockedUntil <= now;
+    }
     throwIfDbError(error, "Sign-in rate limit could not be checked");
     return data === true;
   }
   async clearAuthAttempts(key: string) {
     const { error } = await this.sb.rpc("clear_auth_attempts", { p_key: key });
+    if (missingSecurityMigration(error)) {
+      this.legacyAuthAttempts.delete(key);
+      return;
+    }
     throwIfDbError(error, "Sign-in rate limit could not be cleared");
   }
   async setUserRoles(id: string, roles: string[]) {
@@ -290,7 +325,7 @@ class SupabaseRepo implements Repo {
     const myLegs = legs.filter((l) => l.travel_group_id === tg.id).sort((a, b) => a.leg_order - b.leg_order);
     const active = myLegs.find((l) => l.status === "air") ?? myLegs[myLegs.length - 1] ?? null;
     const last = myLegs[myLegs.length - 1] ?? null;
-    const groupPickups = pickups.filter((p) => p.travel_group_id === tg.id);
+    const groupPickups = pickups.filter((p) => p.travel_group_id === tg.id && p.requested);
     const pickup = groupPickups.find((p) => p.flight_leg_id === last?.id) ?? null;
     return {
       ...tg,
@@ -359,9 +394,14 @@ class SupabaseRepo implements Repo {
     throwIfDbError(error, "Pickup could not be read");
     return (data as Pickup) ?? null;
   }
-  async requestPickup(travelGroupId: string, flightLegId: string | null) {
-    const { error } = await this.sb.from("pickups").upsert({ travel_group_id: travelGroupId, flight_leg_id: flightLegId, requested: true }, { onConflict: "flight_leg_id" });
-    throwIfDbError(error, "Pickup was not requested");
+  async setPickupRequested(travelGroupId: string, flightLegId: string, requested: boolean) {
+    const { error } = await this.sb.from("pickups").upsert({
+      travel_group_id: travelGroupId,
+      flight_leg_id: flightLegId,
+      requested,
+      ...(!requested ? { driver_user_id: null, driver_en_route: false } : {}),
+    }, { onConflict: "flight_leg_id" });
+    throwIfDbError(error, "Pickup preference was not saved");
   }
   async claimPickup(pickupId: string, userId: string): Promise<ClaimResult> {
     const { data, error } = await this.sb.from("pickups").update({ driver_user_id: userId }).eq("id", pickupId).is("driver_user_id", null).select("driver_user_id");

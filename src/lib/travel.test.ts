@@ -61,6 +61,11 @@ describe("multi-leg travel derivations", () => {
     expect(pickupForLeg(view, "out")).toBeNull();
   });
 
+  it("respects an explicitly disabled pickup", () => {
+    const pickup = { id: "pickup", travel_group_id: "trip", flight_leg_id: "in", requested: false } as Pickup;
+    expect(pickupForLeg(trip([inbound], [pickup]), "in")).toBeNull();
+  });
+
   it("does not mark a journey arrived until every leg is complete", () => {
     expect(journeyStatus(["landed", "scheduled"])).toBe("upcoming");
     expect(journeyStatus(["landed", "air"])).toBe("travelling");

@@ -8,11 +8,11 @@ import { FlightCard } from "@/components/flight-card";
 import { WorldClocks } from "@/components/world-clocks";
 import { ItineraryLeg } from "@/components/itinerary-leg";
 import { airportZone } from "@/lib/airports";
-import { currentLeg, legArrival, legDeparture, orderedLegs } from "@/lib/travel";
+import { currentLeg, legArrival, legDeparture, orderedLegs, pickupForLeg } from "@/lib/travel";
 import { airportCity, dualTimeLabel, fmtAirportTime, legRouteLabel, minutesUntil, pickupLeaveBy } from "@/lib/flight-view";
 import { flightStatusMeta } from "@/lib/display";
 import { BackHeader, PersonChip, SectionHeader } from "@/components/ui";
-import { FlightStatusAdmin, PickupControl, RefreshFlight } from "@/components/interactive";
+import { FlightStatusAdmin, PickupControl, PickupRequirementAdmin, RefreshFlight } from "@/components/interactive";
 import { FlightEditForm } from "@/components/admin";
 import type { TravelView } from "@/lib/repo/types";
 import type { FlightLeg, Pickup, PublicUser } from "@/lib/types";
@@ -181,6 +181,9 @@ export default async function FlightDetail({ params }: { params: Promise<{ id: s
               {legs.map((leg) => (
                 <div key={leg.id} className="space-y-3">
                   {multi && <div className="mono px-1 text-[11px] font-bold uppercase tracking-wide text-muted">{leg.flight_number} · {leg.origin_airport}→{leg.destination_airport}</div>}
+                  {leg.destination_airport.trim().toUpperCase() === "HRE" && (
+                    <PickupRequirementAdmin travelId={t.id} legId={leg.id} required={Boolean(pickupForLeg(t, leg.id))} />
+                  )}
                   <FlightStatusAdmin travelId={t.id} legId={leg.id} />
                   <FlightEditForm leg={leg} />
                 </div>

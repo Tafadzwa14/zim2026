@@ -135,7 +135,7 @@ function LegCard({ leg, index, onChange, onRemove }: { leg: NewLegInput; index: 
 export function TravelForm({ me, users, onDone }: FormProps) {
   const { run, pending } = useAction();
   const [travellers, setTravellers] = useState<string[]>([me.id]);
-  const [pickup, setPickup] = useState(false);
+  const [pickup, setPickup] = useState(true);
   const [legs, setLegs] = useState<NewLegInput[]>([]);
   const [flightNo, setFlightNo] = useState("");
   const [date, setDate] = useState(todayInput());
@@ -146,6 +146,7 @@ export function TravelForm({ me, users, onDone }: FormProps) {
 
   const updateLeg = (i: number, patch: Partial<NewLegInput>) => setLegs((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
   const removeLeg = (i: number) => setLegs((ls) => ls.filter((_, idx) => idx !== i));
+  const hasHarareArrival = legs.some((leg) => leg.destination_airport.trim().toUpperCase() === "HRE");
 
   async function search() {
     setSearching(true);
@@ -213,7 +214,12 @@ export function TravelForm({ me, users, onDone }: FormProps) {
 
       <label className="zc-label mt-4">Who&apos;s travelling?</label>
       <PeoplePicker users={users} value={travellers} onChange={setTravellers} />
-      <Toggle on={pickup} onToggle={() => setPickup(!pickup)} label="Need airport pickup?" />
+      {hasHarareArrival && (
+        <>
+          <Toggle on={pickup} onToggle={() => setPickup(!pickup)} label="Harare airport pickup required" />
+          <p className="mt-1.5 px-1 text-[11px] text-muted">Enabled automatically for every Harare arrival. Turn it off only when no pickup is needed.</p>
+        </>
+      )}
       <button className="zc-btn mt-5 w-full" disabled={pending}>{pending && <Spinner />}{pending ? "Adding…" : "Add travel"}</button>
     </form>
   );

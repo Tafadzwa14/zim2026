@@ -26,12 +26,12 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   experimental: {
     // Photo uploads run through a server action, whose request body is capped
-    // at 1MB by default — far below the 25MB per-file limit the gallery accepts
+    // at 1MB by default — far below the 50MB per-file limit the gallery accepts
     // (and the `photos` bucket allows). Without this, every real phone photo is
     // rejected at the framework boundary before `uploadPhoto` runs. Sized just
-    // above 25MB to leave room for multipart boundaries, headers and the caption.
+    // above 50MB to leave room for multipart boundaries, headers and the caption.
     serverActions: {
-      bodySizeLimit: "26mb",
+      bodySizeLimit: "51mb",
     },
   },
   async headers() {

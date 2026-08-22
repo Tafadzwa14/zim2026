@@ -231,7 +231,7 @@ export interface Repo {
 
   // pickups
   getPickup(id: string): Promise<Pickup | null>;
-  requestPickup(travelGroupId: string, flightLegId: string | null): Promise<void>;
+  setPickupRequested(travelGroupId: string, flightLegId: string, requested: boolean): Promise<void>;
   claimPickup(pickupId: string, userId: string): Promise<ClaimResult>;
   /** Force-set the driver (admin reassign); clears any en-route flag. */
   assignPickup(pickupId: string, driverUserId: string): Promise<void>;

@@ -248,7 +248,7 @@ const newLegSchema = z.object({
 });
 const createTravelSchema = z.object({
   travellers: uuidList,
-  pickup: z.boolean(),
+  pickup: z.boolean().optional().default(true),
   notes: optionalText(2000),
   title: z.string().trim().max(120).optional(),
   legs: z.array(newLegSchema).min(1).max(20),
@@ -269,12 +269,10 @@ export async function createTravel(input: unknown): Promise<ActionResult<{ id: s
     origin_airport: l.origin_airport.trim().toUpperCase(),
     destination_airport: l.destination_airport.trim().toUpperCase(),
   }));
-  if (clean.pickup && !legs.some((leg) => leg.destination_airport === "HRE")) {
-    return fail("A Harare pickup needs at least one flight arriving at HRE");
-  }
+  const hasHarareArrival = legs.some((leg) => leg.destination_airport === "HRE");
   const group = await repo.createTravel({ title, travellers, created_by: me.id, pickup: clean.pickup, notes: clean.notes ?? null, legs });
   await repo.addActivity(me.id, "flight_added", `added flight ${legs[0].flight_number}`, { type: "travel", id: group.id });
-  if (clean.pickup) await repo.addActivity(me.id, "pickup_requested", "requested an airport pickup", { type: "travel", id: group.id });
+  if (clean.pickup && hasHarareArrival) await repo.addActivity(me.id, "pickup_requested", "requested an airport pickup", { type: "travel", id: group.id });
   refresh();
   return ok({ id: group.id }, "Travel added");
 }
@@ -286,7 +284,7 @@ export async function parseItinerary(formData: FormData): Promise<ActionResult<{
   const file = formData.get("file");
   if (!(file instanceof File)) return fail("Choose a PDF to upload");
   if (file.type !== "application/pdf") return fail("That's not a PDF — export your itinerary as a PDF and try again");
-  if (file.size > 15 * 1024 * 1024) return fail("That PDF is too large (max 15 MB)");
+  if (file.size > 25 * 1024 * 1024) return fail("That PDF is too large (max 25 MB)");
   let extracted;
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
@@ -435,6 +433,25 @@ export async function refreshFlight(travelId: string): Promise<ActionResult> {
 }
 
 // ============================ pickups ============================
+export async function setPickupRequired(travelId: string, legId: string, required: boolean): Promise<ActionResult> {
+  if (!validId(travelId) || !validId(legId) || typeof required !== "boolean") return fail("Invalid pickup preference");
+  const me = await requireAdmin();
+  const repo = getRepo();
+  const travel = await repo.getTravel(travelId);
+  const leg = travel?.legs.find((item) => item.id === legId);
+  if (!travel || !leg) return fail("Flight not found");
+  if (leg.destination_airport.trim().toUpperCase() !== "HRE") return fail("Only Harare arrivals need an airport pickup");
+  await repo.setPickupRequested(travelId, legId, required);
+  await repo.addActivity(
+    me.id,
+    "pickup_requested",
+    `${required ? "enabled" : "disabled"} the airport pickup for ${travel.title}`,
+    { type: "travel", id: travel.id },
+  );
+  refresh();
+  return ok({}, required ? "Pickup enabled" : "Pickup disabled");
+}
+
 export async function claimPickup(pickupId: string): Promise<ActionResult> {
   if (!validId(pickupId)) return fail("Invalid pickup");
   const me = await requireUser();
@@ -894,7 +911,7 @@ export async function uploadPhoto(formData: FormData): Promise<ActionResult<{ id
   const caption = typeof rawCaption === "string" ? rawCaption.trim() || null : null;
   if (caption && caption.length > 500) return fail("Keep the caption under 500 characters");
   if (!(file instanceof File)) return fail("Choose a photo to upload");
-  if (file.size > 25 * 1024 * 1024) return fail("That image is too large (max 25 MB)");
+  if (file.size > 50 * 1024 * 1024) return fail("That image is too large (max 50 MB)");
   const repo = getRepo();
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
