@@ -17,6 +17,7 @@ import {
 } from "@/lib/flight-view";
 import { FlightCard } from "@/components/flight-card";
 import { PickupControl } from "@/components/interactive";
+import { PlaneFacts } from "@/components/plane-facts";
 import { CatPill, EmptyState, List, LiveDot, SectionHeader } from "@/components/ui";
 import type { TravelView } from "@/lib/repo/types";
 import type { PublicUser } from "@/lib/types";
@@ -120,9 +121,9 @@ export function FlightsBoard({ travel, me, users }: { travel: TravelView[]; me: 
   const showToday = filter === "all" || filter === "today";
   const showUpcoming = filter === "all";
   const showLanded = filter === "all";
+  const showAirFacts = showAir && groups.air.length === 0;
   const empty =
     (filter === "today" && !groups.todayFlights.length && !groups.air.length) ||
-    (filter === "air" && !groups.air.length) ||
     (filter === "pickups" && !groups.runs.length);
 
   return (
@@ -151,7 +152,13 @@ export function FlightsBoard({ travel, me, users }: { travel: TravelView[]; me: 
         </>
       )}
 
-      {showAir && <FlightSection title="In the air" items={groups.air} fullCards meta={groups.air.length ? <><LiveDot /> live</> : "0"} />}
+      {showAirFacts && (
+        <>
+          <SectionHeader meta="0 active">In the air</SectionHeader>
+          <PlaneFacts />
+        </>
+      )}
+      {showAir && groups.air.length > 0 && <FlightSection title="In the air" items={groups.air} fullCards meta={<><LiveDot /> live</>} />}
       {showToday && <FlightSection title="Today" items={groups.todayFlights} />}
       {showUpcoming && <FlightSection title="Upcoming" items={groups.upcoming} />}
       {showLanded && <FlightSection title="Landed" items={groups.landed} />}

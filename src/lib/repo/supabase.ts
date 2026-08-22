@@ -257,7 +257,7 @@ class SupabaseRepo implements Repo {
       pickup,
       driver: pickup?.driver_user_id ? users.get(pickup.driver_user_id) ?? null : null,
       activeLeg: active,
-      arrivalIso: last?.estimated_arrival ?? last?.scheduled_arrival ?? null,
+      arrivalIso: last?.actual_arrival ?? last?.estimated_arrival ?? last?.scheduled_arrival ?? null,
     };
   }
   private async travelBundle() {

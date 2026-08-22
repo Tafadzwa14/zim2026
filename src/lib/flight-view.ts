@@ -12,15 +12,23 @@ export function legArrival(leg: FlightLeg | null): string | null {
 }
 
 export function finalLeg(travel: TravelView): FlightLeg | null {
-  return travel.legs[travel.legs.length - 1] ?? null;
+  const legs = [...travel.legs].sort((a, b) => a.leg_order - b.leg_order);
+  return legs[legs.length - 1] ?? null;
 }
 
 export function currentLeg(travel: TravelView): FlightLeg | null {
+  const legs = [...travel.legs].sort((a, b) => a.leg_order - b.leg_order);
+  const now = Date.now();
+  const flown = (l: FlightLeg) => {
+    const arr = legArrival(l);
+    return l.status === "landed" || l.status === "cancelled" || (arr ? Date.parse(arr) < now : false);
+  };
   return (
-    travel.legs.find((l) => l.status === "air") ??
-    travel.legs.find((l) => l.status === "boarding") ??
-    travel.legs.find((l) => l.status !== "landed") ??
-    finalLeg(travel)
+    legs.find((l) => l.status === "air") ??
+    legs.find((l) => l.status === "boarding" && !flown(l)) ??
+    legs.find((l) => !flown(l)) ??
+    legs[legs.length - 1] ??
+    null
   );
 }
 

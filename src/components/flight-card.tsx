@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { airportZone } from "@/lib/airports";
 import { cn } from "@/lib/cn";
-import { progressFromTimes, remainingLabel } from "@/lib/format";
+import { fmtDayShortIn, fmtZoneLabel, progressFromTimes, remainingLabel, TRIP_TZ } from "@/lib/format";
 import { flightStatusMeta } from "@/lib/display";
 import { fmtAirportTime } from "@/lib/flight-view";
+import { currentLeg, legArrival, legDeparture, orderedLegs } from "@/lib/travel";
 import type { TravelView } from "@/lib/repo/types";
 import type { FlightLeg } from "@/lib/types";
 
@@ -81,20 +83,39 @@ function StatusBadge({ status }: { status: FlightLeg["status"] }) {
   );
 }
 
+function arrivalReading(l: FlightLeg | null): { iso: string | null; label: string } {
+  if (!l) return { iso: null, label: "TBC" };
+  if (l.actual_arrival) return { iso: l.actual_arrival, label: "Actual" };
+  if (l.estimated_arrival) return { iso: l.estimated_arrival, label: "Est." };
+  if (l.scheduled_arrival) return { iso: l.scheduled_arrival, label: "Sched." };
+  return { iso: null, label: "TBC" };
+}
+
+function airportClock(iso: string | null, airport: string | null | undefined): { time: string; day: string; zone: string } {
+  if (!iso || Number.isNaN(new Date(iso).getTime())) return { time: "TBC", day: "", zone: "" };
+  const tz = airportZone(airport) ?? TRIP_TZ;
+  return {
+    time: fmtAirportTime(iso, airport),
+    day: fmtDayShortIn(iso, tz),
+    zone: fmtZoneLabel(iso, tz),
+  };
+}
+
 /** Progress of a single leg: 0 while scheduled, live/estimated while airborne, 1 once landed. */
 function legProgress(l: FlightLeg): number {
   if (l.status === "landed") return 1;
-  if (l.status === "air") return l.progress || progressFromTimes(l.estimated_departure ?? l.scheduled_departure, l.estimated_arrival ?? l.scheduled_arrival);
+  if (l.status === "air") return l.progress || progressFromTimes(legDeparture(l), legArrival(l));
   return 0;
 }
 
 export function FlightCard({ travel, full = false, leg: shownLeg }: { travel: TravelView; full?: boolean; leg?: FlightLeg | null }) {
-  const active = shownLeg ?? travel.activeLeg;
+  const ordered = orderedLegs(travel);
+  const active = shownLeg ?? currentLeg(ordered) ?? ordered[ordered.length - 1] ?? travel.activeLeg;
   if (!active) return null;
   // The whole journey, in order. The hero shows trip endpoints (first origin →
   // final destination) so a multi-leg trip reads as one journey, while live
   // tracking (delay, "to go", radar source) stays keyed to the active leg.
-  const legs = travel.legs.length ? travel.legs : [active];
+  const legs = ordered.length ? ordered : [active];
   const first = legs[0];
   const last = legs[legs.length - 1];
   const multi = legs.length > 1;
@@ -102,9 +123,10 @@ export function FlightCard({ travel, full = false, leg: shownLeg }: { travel: Tr
   const originCity = multi ? first.origin_city : active.origin_city;
   const destAirport = multi ? last.destination_airport : active.destination_airport;
   const destCity = multi ? last.destination_city : active.destination_city;
-  const dep = active.estimated_departure ?? active.scheduled_departure;
-  const arrActive = active.estimated_arrival ?? active.scheduled_arrival;
-  const finalArr = last.estimated_arrival ?? last.scheduled_arrival;
+  const dep = legDeparture(active);
+  const arrActive = legArrival(active);
+  const finalArrival = arrivalReading(last);
+  const landsAt = airportClock(finalArrival.iso, destAirport);
   const allLanded = legs.every((l) => l.status === "landed");
   // Overall trip progress: mean of the per-leg progress across the whole journey.
   const progress = multi ? legs.reduce((s, l) => s + legProgress(l), 0) / legs.length : legProgress(active);
@@ -149,7 +171,7 @@ export function FlightCard({ travel, full = false, leg: shownLeg }: { travel: Tr
       <RouteMap progress={progress} />
       <div className="relative mt-3.5 flex gap-[7px]">
         {[
-          { v: fmtAirportTime(finalArr, destAirport), k: allLanded ? "Arrived" : "Lands" },
+          { v: landsAt.time, k: allLanded ? "Arrived" : "Lands", sub: `${finalArrival.label}${landsAt.zone ? ` ${landsAt.zone}` : ""}${landsAt.day ? ` · ${landsAt.day}` : ""}` },
           { v: active.delay_minutes && active.delay_minutes > 0 ? `+${active.delay_minutes} min` : "On time", k: "Delay", late: (active.delay_minutes ?? 0) > 0 },
           { v: allLanded ? "✓" : remainingLabel(dep, arrActive, legProgress(active)) || "—", k: allLanded ? "Status" : "To go" },
           { v: active.aircraft_type_code ?? "—", k: "Aircraft" },
@@ -157,6 +179,7 @@ export function FlightCard({ travel, full = false, leg: shownLeg }: { travel: Tr
           <div key={i} className="flex-1 rounded-[14px] border border-white/5 bg-white/[.07] px-1.5 py-2.5 text-center">
             <div className={cn("mono text-[14px] font-semibold", m.late && "text-[#f0b84e]")}>{m.v}</div>
             <div className="mt-1 text-[9px] font-bold uppercase tracking-wide text-[var(--flight-label)]">{m.k}</div>
+            {"sub" in m && m.sub && <div className="mono mt-0.5 truncate text-[8.5px] font-semibold text-[var(--flight-label)]">{m.sub}</div>}
           </div>
         ))}
       </div>

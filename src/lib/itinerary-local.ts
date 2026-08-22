@@ -88,7 +88,7 @@ function parseTimeOnly(timeStr: string) {
 function combineDateTime(date: { y: number; mo: number; d: number } | null, timeStr: string, iata: string): string | null {
   const time = parseTimeOnly(timeStr);
   if (!date || !time) return null;
-  return localToIso(date.y, date.mo, date.d, time.h, time.mi, AIRPORTS[iata]?.tz);
+  return airportLocalToUtcIso(naiveIso({ ...date, h: time.h, mi: time.mi }), iata);
 }
 
 function dateFromJetabroadNote(note: string | undefined, fallbackYear: number): { y: number; mo: number; d: number } | null {

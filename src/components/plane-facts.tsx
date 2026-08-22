@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { cn } from "@/lib/cn";
 
 // Fun, family-friendly aviation facts shown while there are no flights yet.
 const FACTS: string[] = [
@@ -30,7 +31,13 @@ const PHOTOS: { url: string; credit: string }[] = [
   { url: "https://images.unsplash.com/photo-1610642372651-fe6e7bc60ba0?auto=format&fit=crop&w=1200&q=70", credit: "Approach to landing" },
 ];
 
-export function PlaneFacts() {
+export function PlaneFacts({
+  framed = true,
+  hint = "No family flights in the air right now.",
+}: {
+  framed?: boolean;
+  hint?: string;
+}) {
   // Start at 0 on both server and client to avoid hydration mismatch, then randomise after mount.
   const [i, setI] = useState(0);
   const [imgOk, setImgOk] = useState(true);
@@ -48,7 +55,7 @@ export function PlaneFacts() {
     // Defer the first shuffle so it runs after paint (avoids a synchronous
     // setState in the effect and any hydration mismatch).
     const kick = setTimeout(shuffle, 0);
-    const id = setInterval(shuffle, 8000);
+    const id = setInterval(shuffle, 60_000);
     return () => {
       clearTimeout(kick);
       clearInterval(id);
@@ -63,9 +70,12 @@ export function PlaneFacts() {
       type="button"
       onClick={shuffle}
       aria-label="Show another plane fact"
-      className="zc-card group w-full overflow-hidden p-0 text-left"
+      className={cn(
+        "group w-full overflow-hidden text-left",
+        framed ? "zc-card p-0" : "rounded-[18px] bg-chip p-0"
+      )}
     >
-      <div className="relative h-44 w-full overflow-hidden bg-flight sm:h-52">
+      <div className={cn("relative w-full overflow-hidden bg-flight", framed ? "h-44 sm:h-52" : "h-36")}>
         {imgOk ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -88,7 +98,7 @@ export function PlaneFacts() {
       <div className="px-6 py-6 text-center">
         <div className="mono text-[10.5px] font-bold uppercase tracking-wide text-honey">Did you know?</div>
         <p className="disp mx-auto mt-2 max-w-md text-lg font-extrabold leading-snug">{fact}</p>
-        <p className="mt-3 text-sm text-muted">No flights yet. Add travel to start tracking arrivals and pickups.</p>
+        <p className="mt-3 text-sm text-muted">{hint}</p>
       </div>
     </button>
   );

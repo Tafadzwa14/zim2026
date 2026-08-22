@@ -83,7 +83,7 @@ class MemoryRepo implements Repo {
       pickup,
       driver: pickup?.driver_user_id ? this.user(pickup.driver_user_id) : null,
       activeLeg: active,
-      arrivalIso: last?.estimated_arrival ?? last?.scheduled_arrival ?? null,
+      arrivalIso: last?.actual_arrival ?? last?.estimated_arrival ?? last?.scheduled_arrival ?? null,
     };
   }
 

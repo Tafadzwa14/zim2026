@@ -9,6 +9,7 @@ import { currentLeg, legArrival, legDeparture, orderedLegs, type AirportRun, typ
 import { FlightCard } from "@/components/flight-card";
 import { List, LiveDot, SectionHeader } from "@/components/ui";
 import { PickupControl, ShoppingItemRow, TaskItemRow } from "@/components/interactive";
+import { PlaneFacts } from "@/components/plane-facts";
 import { PhotoCarousel } from "@/components/photo-gallery";
 import { Dismissable } from "@/components/dismissable";
 import { ViewerTime } from "@/components/viewer-time";
@@ -237,6 +238,20 @@ function endTime(iso: string | null, iata: string): { time: string; day: string;
   return { time: fmtTimeIn(iso, tz), day: fmtDayShortIn(iso, tz), zone: fmtZoneLabel(iso, tz) };
 }
 
+function departureSource(l: FlightLeg): string {
+  if (l.actual_departure) return "Actual";
+  if (l.estimated_departure) return "Est.";
+  if (l.scheduled_departure) return "Sched.";
+  return "TBC";
+}
+
+function arrivalSource(l: FlightLeg): string {
+  if (l.actual_arrival) return "Actual";
+  if (l.estimated_arrival) return "Est.";
+  if (l.scheduled_arrival) return "Sched.";
+  return "TBC";
+}
+
 /**
  * The viewer's own flight: the leg they're on right now, big, with a stepper
  * for whatever is left to fly. Renders nothing once every leg has landed.
@@ -252,6 +267,8 @@ function MyFlightCard({ trip }: { trip: TravelView }) {
   const arr = legArrival(cur);
   const depAt = endTime(dep, cur.origin_airport);
   const arrAt = endTime(arr, cur.destination_airport);
+  const depMeta = [departureSource(cur) !== "TBC" ? departureSource(cur) : null, depAt.zone].filter(Boolean).join(" ");
+  const arrMeta = [arrivalSource(cur) !== "TBC" ? arrivalSource(cur) : null, arrAt.zone].filter(Boolean).join(" ");
   const mins = minutesBetween(dep, arr);
   const late = cur.status !== "landed" && (cur.delay_minutes ?? 0) > 0;
   const chips = [
@@ -281,7 +298,7 @@ function MyFlightCard({ trip }: { trip: TravelView }) {
             <div className="mt-1 truncate text-[11px] font-bold text-[var(--flight-label)]">{cur.origin_city}</div>
             <div className="mono mt-1.5 text-[14px] font-semibold">
               {depAt.time}
-              {depAt.zone && <span className="ml-1 text-[10px] text-[var(--flight-label)]">{depAt.zone}</span>}
+              {depMeta && <span className="ml-1 text-[10px] text-[var(--flight-label)]">{depMeta}</span>}
             </div>
             {depAt.day && <div className="mono text-[10px] text-[var(--flight-label)]">{depAt.day}</div>}
           </div>
@@ -294,7 +311,7 @@ function MyFlightCard({ trip }: { trip: TravelView }) {
             <div className="mt-1 truncate text-[11px] font-bold text-[var(--flight-label)]">{cur.destination_city}</div>
             <div className="mono mt-1.5 text-[14px] font-semibold">
               {arrAt.time}
-              {arrAt.zone && <span className="ml-1 text-[10px] text-[var(--flight-label)]">{arrAt.zone}</span>}
+              {arrMeta && <span className="ml-1 text-[10px] text-[var(--flight-label)]">{arrMeta}</span>}
             </div>
             {arrAt.day && <div className="mono text-[10px] text-[var(--flight-label)]">{arrAt.day}</div>}
           </div>
@@ -483,12 +500,16 @@ export function renderMobileWidget(id: string, ctx: HomeCtx): ReactNode {
       ) : null;
 
     case "in-the-air":
-      return ctx.activeFlights.length ? (
+      return (
         <section>
-          <SectionHeader meta={<><LiveDot /> {ctx.activeFlights.length > 1 ? `${ctx.activeFlights.length} live` : `updated ${timeAgo(airborneLeg(ctx.activeFlights[0])?.last_synced_at ?? new Date().toISOString())}`}</>}>In the air</SectionHeader>
-          <div className="flex flex-col gap-3">{ctx.activeFlights.map((t) => <FlightCard key={t.id} travel={t} full />)}</div>
+          <SectionHeader meta={ctx.activeFlights.length ? <><LiveDot /> {ctx.activeFlights.length > 1 ? `${ctx.activeFlights.length} live` : `updated ${timeAgo(airborneLeg(ctx.activeFlights[0])?.last_synced_at ?? new Date().toISOString())}`}</> : "0 active"}>In the air</SectionHeader>
+          {ctx.activeFlights.length ? (
+            <div className="flex flex-col gap-3">{ctx.activeFlights.map((t) => <FlightCard key={t.id} travel={t} full />)}</div>
+          ) : (
+            <PlaneFacts />
+          )}
         </section>
-      ) : null;
+      );
 
     case "my-flight":
       return ctx.myFlight ? (
@@ -631,7 +652,7 @@ export function renderDesktopWidget(id: string, ctx: HomeCtx): ReactNode {
         <Panel title="In the air" meta={ctx.activeFlights.length ? <><LiveDot /> {ctx.activeFlights.length > 1 ? `${ctx.activeFlights.length} live` : "live"}</> : "0 active"} pad>
           {ctx.activeFlights.length ? (
             <div className="flex flex-col gap-3">{ctx.activeFlights.map((t) => <FlightCard key={t.id} travel={t} full />)}</div>
-          ) : <PanelEmpty emoji="✈️" text="No family flights in the air right now" />}
+          ) : <PlaneFacts framed={false} />}
         </Panel>
       );
 
