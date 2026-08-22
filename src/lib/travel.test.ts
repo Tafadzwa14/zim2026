@@ -45,8 +45,10 @@ describe("multi-leg travel derivations", () => {
   });
 
   it("creates a pickup and a drop-off from the actual Harare legs", () => {
-    expect(airportRunsFor(trip([outbound, inbound])).map((run) => [run.kind, run.leg.id]))
+    const runs = airportRunsFor(trip([outbound, inbound]));
+    expect(runs.map((run) => [run.kind, run.leg.id]))
       .toEqual([["pickup", "in"], ["dropoff", "out"]]);
+    expect(runs.find((run) => run.kind === "dropoff")?.hreIso).toBe("2026-09-20T06:00:00.000Z");
   });
 
   it("selects the next unflown leg and returns null after the whole trip", () => {

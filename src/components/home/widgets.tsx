@@ -38,10 +38,10 @@ export interface HomeCtx {
 
 interface CalEv { icon: string; title: string; date: string; time: string | null; href: string }
 
-/** How each direction of airport run reads: the label, its emoji and its verb. */
-const RUN_META: Record<AirportRunKind, { label: string; emoji: string; verb: string }> = {
-  pickup: { label: "Pickup", emoji: "🛬", verb: "lands" },
-  dropoff: { label: "Drop-off", emoji: "🛫", verb: "leaves" },
+/** How each direction of airport run reads: the label and its emoji. */
+const RUN_META: Record<AirportRunKind, { label: string; emoji: string }> = {
+  pickup: { label: "Pickup", emoji: "🛬" },
+  dropoff: { label: "Drop-off", emoji: "🛫" },
 };
 
 /** The travellers' emojis for a trip, falling back to a plane for an empty group. */
@@ -56,6 +56,14 @@ function crew(t: TravelView): string {
  */
 function heroRun(d: Dashboard): AirportRun | null {
   return d.runsAhead.find((r) => !r.cancelled) ?? d.runsAhead[0] ?? null;
+}
+
+function runTimeSummary(run: AirportRun): string {
+  if (run.kind === "dropoff") {
+    const departs = fmtTime(legDeparture(run.leg));
+    return ["check-in " + fmtTime(run.hreIso), departs ? `departs ${departs}` : null].filter(Boolean).join(" · ");
+  }
+  return `lands ${fmtTime(run.hreIso)}`;
 }
 
 /** The leg a trip has in the air right now, if any. `activeLeg` can't be trusted for this. */
@@ -132,7 +140,7 @@ export function MyBanner({ d }: { d: Dashboard }) {
         : `Airport drop-off · ${when}`;
     const sub = run.cancelled
       ? `${run.leg.flight_number} · flight cancelled`
-      : [run.leg.flight_number, `${m.verb} ${fmtTime(run.hreIso)}`, needsDriver ? "driver needed" : null].filter(Boolean).join(" · ");
+      : [run.leg.flight_number, runTimeSummary(run), needsDriver ? "driver needed" : null].filter(Boolean).join(" · ");
     return <FlightBanner href={`/flights/${run.tripId}`} emoji={m.emoji} eyebrow={eyebrow} headline={`${crew(run.trip)} ${run.trip.title}`} sub={sub} />;
   }
 
@@ -160,7 +168,12 @@ export function MyStatTile({ d }: { d: Dashboard }) {
     const pickup = pickupForLeg(run.trip, run.leg.id);
     const needsDriver = !run.cancelled && run.kind === "pickup" && Boolean(pickup && !pickup.driver_user_id);
     const value = run.cancelled ? "Cancelled" : today ? fmtTime(run.hreIso) : fmtDayShortUpper(run.hreIso);
-    const sub = needsDriver ? `${run.trip.title} · driver needed` : `${crew(run.trip)} ${run.trip.title}`;
+    const departs = run.kind === "dropoff" ? fmtTime(legDeparture(run.leg)) : "";
+    const sub = needsDriver
+      ? `${run.trip.title} · driver needed`
+      : run.kind === "dropoff" && departs
+        ? `Departs ${departs} · ${crew(run.trip)} ${run.trip.title}`
+        : `${crew(run.trip)} ${run.trip.title}`;
     const eyebrow = run.cancelled
       ? `${m.emoji} ${m.label} · ${today ? "today" : fmtDayShortUpper(run.hreIso)}`
       : today ? `${m.emoji} ${m.label} · today` : `${m.emoji} Next ${m.label.toLowerCase()}`;
@@ -193,6 +206,8 @@ function RunRow({ run, ctx }: { run: AirportRun; ctx: HomeCtx }) {
   const driver = pickup?.driver_user_id ? d.users.find((u) => u.id === pickup.driver_user_id) ?? null : null;
   const today = tripDateOf(run.hreIso) === d.today;
   const showDriver = !run.cancelled && Boolean(pickup);
+  const departureTime = run.kind === "dropoff" ? fmtTime(legDeparture(run.leg)) : "";
+  const when = today ? "Today" : fmtDayShortUpper(run.hreIso);
   return (
     <div className="border-b border-line2 px-4 py-3.5 last:border-0">
       <div className="flex items-center gap-3">
@@ -207,7 +222,12 @@ function RunRow({ run, ctx }: { run: AirportRun; ctx: HomeCtx }) {
         </Link>
         <span className="flex-none text-right">
           <span className="mono block text-[15px] font-semibold">{fmtTime(run.hreIso)}</span>
-          <span className="mono block text-[9.5px] font-semibold uppercase text-muted">{today ? "Today" : fmtDayShortUpper(run.hreIso)}</span>
+          <span className="mono block text-[9.5px] font-semibold uppercase text-muted">{run.kind === "dropoff" ? "Check-in" : when}</span>
+          {run.kind === "dropoff" && (
+            <span className="mono block text-[9.5px] font-semibold uppercase text-muted">
+              {[when, departureTime ? `departs ${departureTime}` : null].filter(Boolean).join(" · ")}
+            </span>
+          )}
         </span>
       </div>
       {showDriver && (
@@ -480,6 +500,14 @@ function EventRow({ icon, title, lead, href }: { icon: string; title: string; le
   );
   return href ? <Link href={href} className="block">{inner}</Link> : inner;
 }
+
+function runEventTitle(run: AirportRun): string {
+  const departs = run.kind === "dropoff" ? fmtTime(legDeparture(run.leg)) : "";
+  return [
+    `${RUN_META[run.kind].label} · ${run.trip.title}`,
+    departs ? `departs ${departs}` : null,
+  ].filter(Boolean).join(" · ");
+}
 function PanelEmpty({ emoji, text }: { emoji?: string; text: string }) {
   return (
     <div className="px-4 py-6 text-center text-[13px] font-bold text-ink2">
@@ -622,7 +650,7 @@ export function renderDesktopWidget(id: string, ctx: HomeCtx): ReactNode {
             <div>
               {d.pinned && <EventRow icon="📢" title={d.pinned.title} lead="Now" />}
               {w && <EventRow icon={w.emoji} title={`${w.label} · ${w.min}°–${w.max}°`} lead="Harare" />}
-              {d.runsToday.map((r) => <EventRow key={r.id} icon={RUN_META[r.kind].emoji} title={`${RUN_META[r.kind].label} · ${r.trip.title}`} lead={fmtTime(r.hreIso)} href={`/flights/${r.tripId}`} />)}
+              {d.runsToday.map((r) => <EventRow key={r.id} icon={RUN_META[r.kind].emoji} title={runEventTitle(r)} lead={fmtTime(r.hreIso)} href={`/flights/${r.tripId}`} />)}
               {ctx.todayPlans.map((p) => <EventRow key={p.id} icon={categoryOf(p.category).icon} title={p.title} lead={p.start_time ? fmtTime(tripInstant(p.date, p.start_time)) : "All day"} href={`/plans/${p.id}`} />)}
             </div>
           ) : <PanelEmpty emoji="🌤️" text="Nothing major today" />}

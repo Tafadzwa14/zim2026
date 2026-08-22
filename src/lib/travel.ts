@@ -99,6 +99,7 @@ export interface AirportRun {
   id: string;
   tripId: string;
   kind: AirportRunKind;
+  /** The car-run instant in Harare time: landing for pickups, check-in for drop-offs. */
   hreIso: string;
   /**
    * The Harare leg was cancelled, so the run is shown flagged and carries no
@@ -108,6 +109,14 @@ export interface AirportRun {
   cancelled: boolean;
   leg: FlightLeg;
   trip: TravelView;
+}
+
+/** Check-in target for a Harare airport drop-off, counted back from departure. */
+export function dropoffCheckinIso(departureIso: string | null, bufferMinutes = 120): string | null {
+  if (!departureIso) return null;
+  const t = new Date(departureIso).getTime();
+  if (!Number.isFinite(t)) return null;
+  return new Date(t - bufferMinutes * 60_000).toISOString();
 }
 
 /**
@@ -138,7 +147,8 @@ export function airportRunsFor(t: TravelView): AirportRun[] {
       }
     }
     if (iata(leg.origin_airport) === HARARE) {
-      const hreIso = legDeparture(leg);
+      const departureIso = legDeparture(leg);
+      const hreIso = dropoffCheckinIso(departureIso) ?? departureIso;
       if (hreIso) {
         runs.push({
           id: `${t.id}:${leg.id}:dep`, tripId: t.id, kind: "dropoff", hreIso,
