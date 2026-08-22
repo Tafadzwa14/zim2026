@@ -52,9 +52,9 @@ export const serverEnv = {
     return process.env.OPENAI_API_KEY ?? "";
   },
   get openaiModel(): string {
-    return process.env.OPENAI_MODEL ?? "gpt-5.6";
+    return process.env.OPENAI_MODEL ?? "gpt-5.6-luna";
   },
-  /** Itinerary reader: "local" (free, deterministic, no key) or "openai". */
+  /** Itinerary reader: "local", "local-with-ai-fallback", or "openai". */
   get itineraryParser(): string {
     return (process.env.ITINERARY_PARSER ?? "local").toLowerCase();
   },
@@ -62,11 +62,11 @@ export const serverEnv = {
 
 /**
  * True when itinerary PDF upload is available. The local parser needs no key,
- * so it's always on; the OpenAI reader needs a key.
+ * so it's always on; AI-only mode needs a key.
  */
 export function isItineraryParsingEnabled(): boolean {
   const parser = (process.env.ITINERARY_PARSER ?? "local").toLowerCase();
-  return parser === "local" || Boolean(process.env.OPENAI_API_KEY);
+  return parser !== "openai" || Boolean(process.env.OPENAI_API_KEY);
 }
 
 function required(name: string): string {

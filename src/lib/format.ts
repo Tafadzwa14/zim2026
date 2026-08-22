@@ -12,7 +12,7 @@ function parts(iso: string, tz = TRIP_TZ) {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-    hour12: false,
+    hourCycle: "h23",
   }).formatToParts(d);
   const get = (t: string) => f.find((p) => p.type === t)?.value ?? "";
   return {
@@ -31,6 +31,44 @@ export function fmtTimeIn(iso: string | null, tz?: string): string {
   const ap = hour >= 12 ? "PM" : "AM";
   const h = hour % 12 || 12;
   return `${h}:${String(minute).padStart(2, "0")} ${ap}`;
+}
+
+/** Render an instant as a `datetime-local` value in the requested IANA zone. */
+export function isoToZonedInput(iso: string | null | undefined, tz = TRIP_TZ): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const { year, month, day, hour, minute } = parts(iso, tz);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${year}-${p(month)}-${p(day)}T${p(hour)}:${p(minute)}`;
+}
+
+function zoneOffsetMs(date: Date, tz: string): number {
+  const f = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const get = (t: string) => f.find((p) => p.type === t)?.value ?? "0";
+  const asUTC = Date.UTC(+get("year"), +get("month") - 1, +get("day"), +get("hour"), +get("minute"), +get("second"));
+  return asUTC - date.getTime();
+}
+
+/** Interpret a `datetime-local` value as wall-clock time in the requested IANA zone. */
+export function zonedInputToIso(v: string, tz = TRIP_TZ): string | null {
+  const m = v.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
+  if (!m) return null;
+  const [, y, mo, d, h, mi] = m;
+  const localAsUTC = Date.UTC(+y, +mo - 1, +d, +h, +mi);
+  const guess = new Date(localAsUTC);
+  const first = new Date(localAsUTC - zoneOffsetMs(guess, tz));
+  const second = new Date(localAsUTC - zoneOffsetMs(first, tz));
+  return second.toISOString();
 }
 
 export function fmtTime(iso: string | null): string {
@@ -130,12 +168,7 @@ export function isSameTripDay(iso: string, dateStr: string): boolean {
  * app rather than the viewer's browser timezone.
  */
 export function isoToTripInput(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const { year, month, day, hour, minute } = parts(iso);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${year}-${p(month)}-${p(day)}T${p(hour)}:${p(minute)}`;
+  return isoToZonedInput(iso, TRIP_TZ);
 }
 
 /**
@@ -144,7 +177,7 @@ export function isoToTripInput(iso: string | null | undefined): string {
  * offset is fixed — the inverse of {@link isoToTripInput}.
  */
 export function tripInputToIso(v: string): string | null {
-  return v ? `${v}:00+02:00` : null;
+  return zonedInputToIso(v, TRIP_TZ);
 }
 
 /**

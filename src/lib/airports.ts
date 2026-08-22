@@ -28,6 +28,7 @@ export const AIRPORTS: Record<string, AirportInfo> = {
   SIN: { tz: "Asia/Singapore", city: "Singapore" },
   KUL: { tz: "Asia/Kuala_Lumpur", city: "Kuala Lumpur" },
   IST: { tz: "Europe/Istanbul", city: "Istanbul" },
+  HKG: { tz: "Asia/Hong_Kong", city: "Hong Kong" },
   LHR: { tz: "Europe/London", city: "London" },
 };
 

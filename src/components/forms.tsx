@@ -6,7 +6,7 @@ import { CATEGORIES } from "@/lib/display";
 import { useAction } from "@/lib/use-action";
 import * as actions from "@/lib/actions";
 import { Spinner } from "@/components/ui";
-import { isoToTripInput, tripInputToIso } from "@/lib/format";
+import { airportInputToIso, isoToAirportInput } from "@/lib/flight-view";
 import type { NewLegInput, TaskView } from "@/lib/repo/types";
 import type { Place, PlanCategory, PublicUser } from "@/lib/types";
 
@@ -125,9 +125,9 @@ function LegCard({ leg, index, onChange, onRemove }: { leg: NewLegInput; index: 
         <div><label className="zc-label">To</label><input className="zc-input uppercase" value={leg.destination_airport} onChange={(e) => onChange({ destination_airport: e.target.value.toUpperCase() })} /></div>
       </div>
       <label className="zc-label">Departs</label>
-      <input type="datetime-local" className="zc-input" value={isoToTripInput(leg.scheduled_departure)} onChange={(e) => onChange({ scheduled_departure: tripInputToIso(e.target.value) })} />
+      <input type="datetime-local" className="zc-input" value={isoToAirportInput(leg.scheduled_departure, leg.origin_airport)} onChange={(e) => onChange({ scheduled_departure: airportInputToIso(e.target.value, leg.origin_airport) })} />
       <label className="zc-label">Arrives</label>
-      <input type="datetime-local" className="zc-input" value={isoToTripInput(leg.scheduled_arrival)} onChange={(e) => onChange({ scheduled_arrival: tripInputToIso(e.target.value) })} />
+      <input type="datetime-local" className="zc-input" value={isoToAirportInput(leg.scheduled_arrival, leg.destination_airport)} onChange={(e) => onChange({ scheduled_arrival: airportInputToIso(e.target.value, leg.destination_airport) })} />
     </div>
   );
 }

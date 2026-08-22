@@ -233,9 +233,18 @@ export async function parseItinerary(formData: FormData): Promise<ActionResult<{
   let extracted;
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
-    extracted = serverEnv.itineraryParser === "openai"
-      ? await parseItineraryPdf(bytes, file.name)
-      : await parseItineraryPdfLocal(bytes, file.name);
+    const parser = serverEnv.itineraryParser;
+    if (parser === "openai") {
+      extracted = await parseItineraryPdf(bytes, file.name);
+    } else {
+      try {
+        extracted = await parseItineraryPdfLocal(bytes, file.name);
+      } catch (localErr) {
+        if (parser !== "local-with-ai-fallback" || !serverEnv.openaiApiKey) throw localErr;
+        console.info("[parseItinerary] local parser failed; trying OpenAI fallback:", localErr);
+        extracted = await parseItineraryPdf(bytes, file.name);
+      }
+    }
   } catch (err) {
     // Log the real cause; the friendly message below never leaks the reason.
     console.error("[parseItinerary] itinerary read failed:", err);

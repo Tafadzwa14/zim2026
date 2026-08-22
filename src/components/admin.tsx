@@ -7,7 +7,7 @@ import { useAction } from "@/lib/use-action";
 import * as actions from "@/lib/actions";
 import { Spinner } from "@/components/ui";
 import { mapsUrl } from "@/lib/maps";
-import { isoToTripInput, tripInputToIso } from "@/lib/format";
+import { airportInputToIso, isoToAirportInput } from "@/lib/flight-view";
 import { ROLES } from "@/lib/types";
 import type { FlightLeg, ImportantInfo, Place } from "@/lib/types";
 import type { InfoGroup, RosterUser } from "@/lib/repo/types";
@@ -349,8 +349,8 @@ export function FlightEditForm({ leg }: { leg: FlightLeg }) {
     terminal_departure: leg.terminal_departure ?? "",
     aircraft_type: leg.aircraft_type ?? "",
     status: leg.status,
-    scheduled_departure: isoToTripInput(leg.scheduled_departure),
-    scheduled_arrival: isoToTripInput(leg.scheduled_arrival),
+    scheduled_departure: isoToAirportInput(leg.scheduled_departure, leg.origin_airport),
+    scheduled_arrival: isoToAirportInput(leg.scheduled_arrival, leg.destination_airport),
   });
 
   if (!open) return <button onClick={() => setOpen(true)} className="zc-btn zc-btn-ghost w-full py-2.5 text-sm">Admin: edit flight details ✏️</button>;
@@ -368,8 +368,8 @@ export function FlightEditForm({ leg }: { leg: FlightLeg }) {
           terminal_departure: f.terminal_departure,
           aircraft_type: f.aircraft_type,
           status: f.status,
-          scheduled_departure: tripInputToIso(f.scheduled_departure),
-          scheduled_arrival: tripInputToIso(f.scheduled_arrival),
+          scheduled_departure: airportInputToIso(f.scheduled_departure, f.origin_airport),
+          scheduled_arrival: airportInputToIso(f.scheduled_arrival, f.destination_airport),
         }), { onSuccess: (r) => { if (r.ok) setOpen(false); } });
       }}
     >

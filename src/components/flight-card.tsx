@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { cn } from "@/lib/cn";
-import { fmtTime, progressFromTimes, remainingLabel } from "@/lib/format";
+import { progressFromTimes, remainingLabel } from "@/lib/format";
 import { flightStatusMeta } from "@/lib/display";
+import { fmtAirportTime } from "@/lib/flight-view";
 import type { TravelView } from "@/lib/repo/types";
 import type { FlightLeg } from "@/lib/types";
 
@@ -87,8 +88,8 @@ function legProgress(l: FlightLeg): number {
   return 0;
 }
 
-export function FlightCard({ travel, full = false }: { travel: TravelView; full?: boolean }) {
-  const active = travel.activeLeg;
+export function FlightCard({ travel, full = false, leg: shownLeg }: { travel: TravelView; full?: boolean; leg?: FlightLeg | null }) {
+  const active = shownLeg ?? travel.activeLeg;
   if (!active) return null;
   // The whole journey, in order. The hero shows trip endpoints (first origin →
   // final destination) so a multi-leg trip reads as one journey, while live
@@ -148,7 +149,7 @@ export function FlightCard({ travel, full = false }: { travel: TravelView; full?
       <RouteMap progress={progress} />
       <div className="relative mt-3.5 flex gap-[7px]">
         {[
-          { v: fmtTime(finalArr), k: allLanded ? "Arrived" : "Lands" },
+          { v: fmtAirportTime(finalArr, destAirport), k: allLanded ? "Arrived" : "Lands" },
           { v: active.delay_minutes && active.delay_minutes > 0 ? `+${active.delay_minutes} min` : "On time", k: "Delay", late: (active.delay_minutes ?? 0) > 0 },
           { v: allLanded ? "✓" : remainingLabel(dep, arrActive, legProgress(active)) || "—", k: allLanded ? "Status" : "To go" },
           { v: active.aircraft_type_code ?? "—", k: "Aircraft" },

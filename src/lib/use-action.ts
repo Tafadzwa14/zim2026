@@ -29,8 +29,9 @@ export function useAction() {
         if (res && res.message && !opts?.silent) toast(res.message);
         opts?.onSuccess?.(res);
         router.refresh();
-      } catch {
-        toast("Couldn't update — try again", "⚠️");
+      } catch (err) {
+        const message = err instanceof Error && err.message ? err.message : "try again";
+        toast(`Couldn't update — ${message}`, "⚠️");
       }
     });
   }

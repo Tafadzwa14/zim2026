@@ -61,6 +61,16 @@ function photoExt(fileName: string, contentType: string): string {
   return byMime[contentType] ?? "";
 }
 
+function throwIfDbError(error: { message?: string } | null | undefined, fallback: string) {
+  if (error) throw new Error(error.message || fallback);
+}
+
+function requireRow<T>(data: T | null | undefined, error: { message?: string } | null | undefined, fallback: string): T {
+  throwIfDbError(error, fallback);
+  if (!data) throw new Error(fallback);
+  return data;
+}
+
 class SupabaseRepo implements Repo {
   readonly kind = "supabase" as const;
   private sb: SupabaseClient;
@@ -219,7 +229,10 @@ class SupabaseRepo implements Repo {
     }).select("*").single();
     if (error) throw error;
     const rows = [...new Set(input.attendees)].map((u) => ({ plan_id: (p as Plan).id, user_id: u, added_by: input.created_by }));
-    if (rows.length) await this.sb.from("plan_attendees").insert(rows);
+    if (rows.length) {
+      const { error: attendeeError } = await this.sb.from("plan_attendees").insert(rows);
+      throwIfDbError(attendeeError, "Plan attendees were not saved");
+    }
     return (await this.getPlan((p as Plan).id))!;
   }
   async deletePlan(id: string) {
@@ -274,10 +287,13 @@ class SupabaseRepo implements Repo {
     const { data: tg, error } = await this.sb.from("travel_groups").insert({ title: input.title, status: "upcoming", general_notes: input.notes ?? null, created_by: input.created_by }).select("*").single();
     if (error) throw error;
     const gid = (tg as TravelGroup).id;
-    if (input.travellers.length) await this.sb.from("travel_group_members").insert(input.travellers.map((u) => ({ travel_group_id: gid, user_id: u })));
+    if (input.travellers.length) {
+      const { error: membersError } = await this.sb.from("travel_group_members").insert(input.travellers.map((u) => ({ travel_group_id: gid, user_id: u })));
+      throwIfDbError(membersError, "Travellers were not saved");
+    }
     let firstLeg: string | null = null;
     for (const l of input.legs) {
-      const { data: leg } = await this.sb.from("flight_legs").insert({
+      const { data: leg, error: legError } = await this.sb.from("flight_legs").insert({
         travel_group_id: gid, leg_order: l.leg_order, provider: l.provider ?? "demo", provider_flight_id: l.provider_flight_id ?? null,
         flight_number: l.flight_number, airline_code: l.airline_code ?? null, airline_name: l.airline_name ?? null,
         origin_airport: l.origin_airport, origin_city: l.origin_city ?? null, destination_airport: l.destination_airport, destination_city: l.destination_city ?? null,
@@ -285,9 +301,12 @@ class SupabaseRepo implements Repo {
         terminal_departure: l.terminal_departure ?? null, aircraft_type: l.aircraft_type ?? null, aircraft_type_code: l.aircraft_type_code ?? null,
         aircraft_registration: l.aircraft_registration ?? null, status: l.status ?? "scheduled",
       }).select("id").single();
-      firstLeg ??= (leg as { id: string } | null)?.id ?? null;
+      firstLeg ??= requireRow(leg as { id: string } | null, legError, "Flight leg was not saved").id;
     }
-    if (input.pickup) await this.sb.from("pickups").insert({ travel_group_id: gid, flight_leg_id: firstLeg, requested: true });
+    if (input.pickup) {
+      const { error: pickupError } = await this.sb.from("pickups").insert({ travel_group_id: gid, flight_leg_id: firstLeg, requested: true });
+      throwIfDbError(pickupError, "Pickup request was not saved");
+    }
     return (await this.getTravel(gid))!;
   }
   async setTravelStatus(id: string, status: TravelGroup["status"]) {
@@ -324,9 +343,9 @@ class SupabaseRepo implements Repo {
     return ((data ?? []) as ShoppingItem[]).map((s) => ({ ...s, creator: users.get(s.created_by ?? "") ?? null, claimer: s.claimed_by ? users.get(s.claimed_by) ?? null : null }));
   }
   async addShopping(input: NewShoppingInput) {
-    const { data } = await this.sb.from("shopping_items").insert({ item: input.item, quantity: input.quantity, category: input.category, notes: input.notes ?? null, created_by: input.created_by, claimed_by: input.claimed_by ?? null }).select("*").single();
+    const { data, error } = await this.sb.from("shopping_items").insert({ item: input.item, quantity: input.quantity, category: input.category, notes: input.notes ?? null, created_by: input.created_by, claimed_by: input.claimed_by ?? null }).select("*").single();
+    const s = requireRow(data as ShoppingItem | null, error, "Shopping item was not saved");
     const users = await this.userMap();
-    const s = data as ShoppingItem;
     return { ...s, creator: users.get(s.created_by ?? "") ?? null, claimer: null };
   }
   async setShoppingQuantity(id: string, quantity: number) {
@@ -358,9 +377,9 @@ class SupabaseRepo implements Repo {
     return ((data ?? []) as Task[]).map((t) => ({ ...t, creator: users.get(t.created_by ?? "") ?? null, assignee: t.assigned_to ? users.get(t.assigned_to) ?? null : null }));
   }
   async addTask(input: NewTaskInput) {
-    const { data } = await this.sb.from("tasks").insert({ title: input.title, notes: input.notes ?? null, due_date: input.due_date ?? null, created_by: input.created_by }).select("*").single();
+    const { data, error } = await this.sb.from("tasks").insert({ title: input.title, notes: input.notes ?? null, due_date: input.due_date ?? null, created_by: input.created_by }).select("*").single();
+    const t = requireRow(data as Task | null, error, "Task was not saved");
     const users = await this.userMap();
-    const t = data as Task;
     return { ...t, creator: users.get(t.created_by ?? "") ?? null, assignee: null };
   }
   async updateTask(id: string, patch: Partial<Pick<Task, "title" | "notes" | "due_date">>) {
@@ -416,8 +435,12 @@ class SupabaseRepo implements Repo {
     return ((data ?? []) as Announcement[]).map((a) => ({ ...a, creator: a.created_by ? users.get(a.created_by) ?? null : null }));
   }
   async addAnnouncement(input: NewAnnouncementInput) {
-    if (input.is_pinned) await this.sb.from("announcements").update({ is_pinned: false }).eq("is_pinned", true);
-    await this.sb.from("announcements").insert({ title: input.title, content: input.content ?? null, is_pinned: input.is_pinned, expires_at: input.expires_at ?? null, created_by: input.created_by });
+    if (input.is_pinned) {
+      const { error } = await this.sb.from("announcements").update({ is_pinned: false }).eq("is_pinned", true);
+      throwIfDbError(error, "Existing announcements could not be unpinned");
+    }
+    const { error } = await this.sb.from("announcements").insert({ title: input.title, content: input.content ?? null, is_pinned: input.is_pinned, expires_at: input.expires_at ?? null, created_by: input.created_by });
+    throwIfDbError(error, "Announcement was not saved");
   }
   async setAnnouncementPinned(id: string, pinned: boolean) {
     if (pinned) await this.sb.from("announcements").update({ is_pinned: false }).eq("is_pinned", true);
@@ -431,7 +454,8 @@ class SupabaseRepo implements Repo {
     return ((data ?? []) as import("@/lib/types").Activity[]).map((a) => ({ ...a, actor: a.actor_user_id ? users.get(a.actor_user_id) ?? null : null }));
   }
   async addActivity(actorId: string, type: string, text: string, entity?: { type: string; id: string }) {
-    await this.sb.from("activity").insert({ actor_user_id: actorId, type, entity_type: entity?.type ?? null, entity_id: entity?.id ?? null, metadata: { text } });
+    const { error } = await this.sb.from("activity").insert({ actor_user_id: actorId, type, entity_type: entity?.type ?? null, entity_id: entity?.id ?? null, metadata: { text } });
+    throwIfDbError(error, "Activity was not saved");
   }
 
   async listPolls(userId: string): Promise<PollView[]> {
