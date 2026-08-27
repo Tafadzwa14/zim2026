@@ -1,6 +1,14 @@
 import type { NextConfig } from "next";
 
 const isDev = process.env.NODE_ENV === "development";
+// A stable ID for each deployed build lets Next.js detect a resumed tab that
+// belongs to an older deployment and hard-reload it before RSC/action payloads
+// from different builds can be mixed. Vercel and GitHub provide commit SHAs;
+// other hosts can set NEXT_DEPLOYMENT_ID during the build.
+const deploymentId =
+  process.env.NEXT_DEPLOYMENT_ID ??
+  process.env.VERCEL_GIT_COMMIT_SHA ??
+  process.env.GITHUB_SHA;
 const csp = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
@@ -24,6 +32,7 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  deploymentId,
   experimental: {
     // Photo uploads run through a server action, whose request body is capped
     // at 1MB by default — far below the 50MB per-file limit the gallery accepts
