@@ -9,7 +9,6 @@
 
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
-import { createHmac, randomBytes } from "node:crypto";
 
 const PENDING_PIN = "PENDING";
 const DEFAULT_EMOJI = "🙂";
@@ -22,7 +21,6 @@ for (const line of readFileSync(new URL("../.env.local", import.meta.url), "utf8
 const sb = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
 });
-if (!env.APP_PIN_PEPPER) throw new Error("APP_PIN_PEPPER is required");
 
 const tokens = process.argv.slice(2);
 if (tokens.length === 0) {
@@ -39,12 +37,10 @@ for (const token of tokens) {
   const { data: existing } = await sb.from("users").select("id").ilike("username", username).maybeSingle();
   if (existing) { console.log(`skip   ${clean} (@${username} exists)`); continue; }
 
-  const claimCode = randomBytes(12).toString("base64url");
-  const claimTokenHash = createHmac("sha256", env.APP_PIN_PEPPER).update(claimCode).digest("hex");
   const { error } = await sb.from("users").insert({
-    name: clean, username, emoji: DEFAULT_EMOJI, pin_hash: PENDING_PIN, claim_token_hash: claimTokenHash, is_admin, status: "here",
+    name: clean, username, emoji: DEFAULT_EMOJI, pin_hash: PENDING_PIN, is_admin, status: "here",
   });
   if (error) { console.error(`FAIL   ${clean}: ${error.message}`); process.exit(1); }
-  console.log(`added  ${clean} (@${username})${is_admin ? " — admin" : ""} — invite code: ${claimCode}`);
+  console.log(`added  ${clean} (@${username})${is_admin ? " — admin" : ""}`);
 }
 console.log("done");

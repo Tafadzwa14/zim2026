@@ -9,13 +9,13 @@ Create a Supabase project, then copy `.env.local.example` to `.env.local` and pr
 - `SUPABASE_SERVICE_ROLE_KEY` (server-only; never expose it to a browser)
 - `APP_PIN_PEPPER` generated with `openssl rand -hex 32`
 
-Apply every SQL file in `supabase/migrations` in numeric order, including `0009_security_integrity.sql`. With the Supabase CLI linked to the project, use:
+Apply every SQL file in `supabase/migrations` in numeric order, including `0012_remove_claim_codes.sql`. With the Supabase CLI linked to the project, use:
 
 ```bash
 supabase db push
 ```
 
-Migration 0009 is required. It makes shared tables and photos private, adds versioned sessions and one-time identity claim codes, enforces poll and pickup integrity, and installs transactional write functions.
+Migration 0009 is required for the security controls; migration 0012 removes the admin-issued identity-code requirement. Together they make shared tables and photos private, add versioned sessions, enforce poll and pickup integrity, and install transactional write functions.
 
 Optional demo data is in `supabase/seed.sql`.
 
@@ -27,9 +27,9 @@ Set `APP_PIN_PEPPER` and the Supabase variables in `.env.local`, then run:
 node scripts/provision-users.mjs
 ```
 
-The script prints a different one-time claim code for each person. Share each code privately with its owner. Once the first admin signs in, additional people and replacement claim codes can be managed under **Admin → People**. Codes are displayed only when created or reset; the database stores only their HMAC hashes.
+Once the first admin signs in, additional people can be managed under **Admin → People**. Each added person can choose their own PIN when they first sign in.
 
-Changing `APP_PIN_PEPPER` invalidates existing PIN hashes, claim codes and sessions, so keep it stable and backed up securely.
+Changing `APP_PIN_PEPPER` invalidates existing PIN hashes and sessions, so keep it stable and backed up securely.
 
 ## 3. Optional live flight data
 

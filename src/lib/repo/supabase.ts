@@ -149,7 +149,7 @@ class SupabaseRepo implements Repo {
   async createUser(input: NewUserInput) {
     const { data, error } = await this.sb
       .from("users")
-      .insert({ name: input.name, username: input.username, emoji: input.emoji, pin_hash: input.pinHash, claim_token_hash: input.claimTokenHash, is_admin: input.is_admin ?? false, status: input.status ?? "here" })
+      .insert({ name: input.name, username: input.username, emoji: input.emoji, pin_hash: input.pinHash, is_admin: input.is_admin ?? false, status: input.status ?? "here" })
       .select(USER_COLS)
       .single();
     return requireRow(data as PublicUser | null, error, "Person was not created");
@@ -159,12 +159,11 @@ class SupabaseRepo implements Repo {
     throwIfDbError(error, "Pending people could not be loaded");
     return (data ?? []) as PublicUser[];
   }
-  async claimUser(id: string, patch: { emoji: string; pinHash: string; claimTokenHash: string }) {
+  async claimUser(id: string, patch: { emoji: string; pinHash: string }) {
     const { data: version, error } = await this.sb.rpc("claim_user", {
       p_user_id: id,
       p_emoji: patch.emoji,
       p_pin_hash: patch.pinHash,
-      p_claim_token_hash: patch.claimTokenHash,
     });
     throwIfDbError(error, "Identity could not be claimed");
     if (typeof version !== "number" || version < 0) return null;
@@ -182,8 +181,8 @@ class SupabaseRepo implements Repo {
       }),
     );
   }
-  async resetUserPin(id: string, claimTokenHash: string) {
-    const { error } = await this.sb.rpc("reset_user_pin", { p_user_id: id, p_claim_token_hash: claimTokenHash });
+  async resetUserPin(id: string) {
+    const { error } = await this.sb.rpc("reset_user_pin", { p_user_id: id });
     throwIfDbError(error, "PIN could not be reset");
   }
   async requestPinReset(userId: string) {

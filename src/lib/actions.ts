@@ -10,9 +10,7 @@ import type { NewLegInput, Repo } from "@/lib/repo/types";
 import {
   clearSession,
   getCurrentUser,
-  hashClaimCode,
   hashPin,
-  newClaimCode,
   PENDING_PIN,
   requireAdmin,
   requireUser,
@@ -62,18 +60,17 @@ const claimSchema = z.object({
   userId: z.string().uuid(),
   emoji: z.string().trim().min(1).max(8),
   pin: z.string().regex(/^\d{4}$/, "PIN must be 4 digits"),
-  claimCode: z.string().trim().min(12).max(64),
 });
 
 export async function claimIdentity(input: unknown): Promise<ActionResult> {
   const parsed = claimSchema.safeParse(input);
   if (!parsed.success) return fail(parsed.error.issues[0]?.message ?? "Pick your name, an emoji and a 4-digit PIN");
-  const { userId, emoji, pin, claimCode } = parsed.data;
+  const { userId, emoji, pin } = parsed.data;
   const repo = getRepo();
   const rateKey = `claim:${userId}`;
   if (!(await repo.consumeAuthAttempt(rateKey))) return fail("Too many attempts. Wait 15 minutes and try again.");
-  const claimed = await repo.claimUser(userId, { emoji, pinHash: hashPin(pin), claimTokenHash: hashClaimCode(claimCode) });
-  if (!claimed) return fail("That invite code is invalid, expired, or the identity has already been claimed.");
+  const claimed = await repo.claimUser(userId, { emoji, pinHash: hashPin(pin) });
+  if (!claimed) return fail("That identity has already been claimed. Sign in with your PIN instead.");
   const { user, sessionVersion } = claimed;
   await repo.clearAuthAttempts(rateKey);
   await setSession(user.id, sessionVersion);
@@ -679,7 +676,7 @@ const newPersonSchema = z.object({
   username: z.string().trim().toLowerCase().min(2).max(40).regex(/^[a-z0-9][a-z0-9._-]*$/, "Use letters, numbers, dots, dashes or underscores"),
   is_admin: z.boolean().optional(),
 });
-export async function adminAddPerson(input: unknown): Promise<ActionResult<{ claimCode: string }>> {
+export async function adminAddPerson(input: unknown): Promise<ActionResult> {
   await requireAdmin();
   const parsed = newPersonSchema.safeParse(input);
   if (!parsed.success) return fail("Enter a name and a username (2+ characters)");
@@ -687,21 +684,19 @@ export async function adminAddPerson(input: unknown): Promise<ActionResult<{ cla
   const username = parsed.data.username.toLowerCase();
   const repo = getRepo();
   if (await repo.usernameTaken(username)) return fail("That username is taken");
-  const claimCode = newClaimCode();
-  await repo.createUser({ name, username, emoji: "🙂", pinHash: PENDING_PIN, claimTokenHash: hashClaimCode(claimCode), is_admin: is_admin ?? false, status: "here" });
+  await repo.createUser({ name, username, emoji: "🙂", pinHash: PENDING_PIN, is_admin: is_admin ?? false, status: "here" });
   refresh();
-  return ok({ claimCode }, `${name} added — copy their one-time invite code now`);
+  return ok({}, `${name} added — they can now set their own PIN`);
 }
-export async function adminResetPin(userId: string): Promise<ActionResult<{ claimCode: string }>> {
+export async function adminResetPin(userId: string): Promise<ActionResult> {
   const me = await requireAdmin();
   const parsed = z.string().uuid().safeParse(userId);
   if (!parsed.success) return fail("Invalid person");
   if (parsed.data === me.id) return fail("You can't reset your own PIN here");
   if (!(await getRepo().getUser(parsed.data))) return fail("Person not found");
-  const claimCode = newClaimCode();
-  await getRepo().resetUserPin(parsed.data, hashClaimCode(claimCode));
+  await getRepo().resetUserPin(parsed.data);
   refresh();
-  return ok({ claimCode }, "PIN reset and all existing sessions revoked — share the new invite code");
+  return ok({}, "PIN reset and all existing sessions revoked — they can set a new PIN now");
 }
 export async function adminSetRoles(userId: string, roles: string[]): Promise<ActionResult> {
   if (!validId(userId)) return fail("Invalid person");

@@ -73,7 +73,6 @@ export interface NewUserInput {
   username: string;
   emoji: string;
   pinHash: string;
-  claimTokenHash: string;
   is_admin?: boolean;
   status?: "upcoming" | "travelling" | "here";
 }
@@ -187,10 +186,10 @@ export interface Repo {
   /** Admin-provisioned identities not yet claimed (sentinel PIN). */
   listPending(): Promise<PublicUser[]>;
   /** Claim a pending identity: set emoji + real PIN. Returns null if already claimed. */
-  claimUser(id: string, patch: { emoji: string; pinHash: string; claimTokenHash: string }): Promise<{ user: PublicUser; sessionVersion: number } | null>;
+  claimUser(id: string, patch: { emoji: string; pinHash: string }): Promise<{ user: PublicUser; sessionVersion: number } | null>;
   /** Admin roster: every user plus whether they've claimed their identity. */
   listRoster(): Promise<RosterUser[]>;
-  resetUserPin(id: string, claimTokenHash: string): Promise<void>;
+  resetUserPin(id: string): Promise<void>;
   /** Public: flag that a person wants their PIN reset. Returns false if unknown. */
   requestPinReset(userId: string): Promise<boolean>;
   /** Atomically consume an auth attempt. False means the key is temporarily blocked. */

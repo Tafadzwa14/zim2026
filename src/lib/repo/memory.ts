@@ -119,7 +119,7 @@ class MemoryRepo implements Repo {
     const u: User = {
       id: uid(), name: input.name, username: input.username, emoji: input.emoji,
       pin_hash: input.pinHash, is_admin: input.is_admin ?? false, status: input.status ?? "here",
-      session_version: 0, claim_token_hash: input.claimTokenHash,
+      session_version: 0, claim_token_hash: null,
       roles: [], staying_at: null, pin_reset_requested: false, phone_number: null, prefs: {},
       created_at: nowIso(), updated_at: nowIso(),
     };
@@ -129,9 +129,9 @@ class MemoryRepo implements Repo {
   async listPending() {
     return this.d.users.filter((u) => !u.pin_hash.includes(":")).map(toPublic).sort((a, b) => a.name.localeCompare(b.name));
   }
-  async claimUser(id: string, patch: { emoji: string; pinHash: string; claimTokenHash: string }) {
+  async claimUser(id: string, patch: { emoji: string; pinHash: string }) {
     const u = this.d.users.find((x) => x.id === id);
-    if (!u || u.pin_hash.includes(":") || u.claim_token_hash !== patch.claimTokenHash) return null;
+    if (!u || u.pin_hash.includes(":")) return null;
     u.emoji = patch.emoji; u.pin_hash = patch.pinHash; u.claim_token_hash = null; u.session_version += 1; u.updated_at = nowIso();
     return { user: toPublic(u), sessionVersion: u.session_version };
   }
@@ -140,9 +140,9 @@ class MemoryRepo implements Repo {
       .map((u) => ({ ...toPublic(u), claimed: u.pin_hash.includes(":"), phone_number: u.phone_number ?? null }))
       .sort((a, b) => a.name.localeCompare(b.name));
   }
-  async resetUserPin(id: string, claimTokenHash: string) {
+  async resetUserPin(id: string) {
     const u = this.d.users.find((x) => x.id === id);
-    if (u) { u.pin_hash = "PENDING"; u.claim_token_hash = claimTokenHash; u.session_version += 1; u.pin_reset_requested = false; u.updated_at = nowIso(); }
+    if (u) { u.pin_hash = "PENDING"; u.claim_token_hash = null; u.session_version += 1; u.pin_reset_requested = false; u.updated_at = nowIso(); }
   }
   async requestPinReset(userId: string) {
     const u = this.d.users.find((x) => x.id === userId);

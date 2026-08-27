@@ -40,15 +40,6 @@ export function verifyPin(pin: string, stored: string): boolean {
   }
 }
 
-/** One-way representation of a per-person, one-time identity claim code. */
-export function hashClaimCode(code: string): string {
-  return crypto.createHmac("sha256", secret()).update(code.trim()).digest("hex");
-}
-
-export function newClaimCode(): string {
-  return crypto.randomBytes(12).toString("base64url");
-}
-
 // ---- signed session cookie ----
 function sign(id: string, version: number, expiresAt: number): string {
   const payload = `${id}:${version}:${expiresAt}`;

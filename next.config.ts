@@ -5,10 +5,13 @@ const isDev = process.env.NODE_ENV === "development";
 // belongs to an older deployment and hard-reload it before RSC/action payloads
 // from different builds can be mixed. Vercel and GitHub provide commit SHAs;
 // other hosts can set NEXT_DEPLOYMENT_ID during the build.
-const deploymentId =
+const rawDeploymentId =
   process.env.NEXT_DEPLOYMENT_ID ??
   process.env.VERCEL_GIT_COMMIT_SHA ??
   process.env.GITHUB_SHA;
+// Vercel caps custom skew-protection IDs at 32 characters, while Git SHAs
+// contain 40. The leading 32 characters remain deterministic per build.
+const deploymentId = rawDeploymentId?.slice(0, 32);
 const csp = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
