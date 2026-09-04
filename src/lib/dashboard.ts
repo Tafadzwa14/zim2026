@@ -2,7 +2,7 @@ import "server-only";
 
 import { getRepo } from "@/lib/repo";
 import { tripDateOf, tripTodayISO } from "@/lib/format";
-import { airportRuns, runIsPast } from "@/lib/travel";
+import { upcomingAirportRuns } from "@/lib/travel";
 import { getArrivalWeather } from "@/lib/weather";
 
 /** One aggregated read for Home / the command centre (spec section 45). */
@@ -24,14 +24,10 @@ export async function getDashboard() {
   const dinner = plans.find((p) => p.category === "dinner" && p.date === today) ?? null;
   const nowIso = new Date().toISOString();
   const pinned = announcements.find((a) => a.is_pinned && (!a.expires_at || a.expires_at > nowIso)) ?? null;
-  // Every car run to or from Harare airport, soonest first, in the two shapes
-  // the home screen needs. `runsToday` is everything on today's date including
-  // runs already done, which is what the desktop Today panel wants; `runsAhead`
-  // is every run still to come, which is what a "next run" hero, banner or stat
-  // tile must read from so a finished run is never presented as next.
-  const runs = airportRuns(travel);
-  const runsToday = runs.filter((r) => tripDateOf(r.hreIso) === today);
-  const runsAhead = runs.filter((r) => !runIsPast(r));
+  // Airport runs are always the live queue: completed runs do not linger in
+  // the Today panel or compete with the next driver job.
+  const runsAhead = upcomingAirportRuns(travel);
+  const runsToday = runsAhead.filter((r) => tripDateOf(r.hreIso) === today);
 
   return {
     settings, users, travel, plans, announcements, shopping, tasks, activity,

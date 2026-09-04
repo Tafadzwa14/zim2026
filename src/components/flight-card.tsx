@@ -112,24 +112,24 @@ export function FlightCard({ travel, full = false, leg: shownLeg }: { travel: Tr
   const ordered = orderedLegs(travel);
   const active = shownLeg ?? currentLeg(ordered) ?? ordered[ordered.length - 1] ?? travel.activeLeg;
   if (!active) return null;
-  // The whole journey, in order. The hero shows trip endpoints (first origin →
-  // final destination) so a multi-leg trip reads as one journey, while live
-  // tracking (delay, "to go", radar source) stays keyed to the active leg.
+  // The whole journey, in order. While a leg is airborne the card must show
+  // that leg's route and progress—not the trip's eventual final destination.
   const legs = ordered.length ? ordered : [active];
   const first = legs[0];
   const last = legs[legs.length - 1];
   const multi = legs.length > 1;
-  const originAirport = multi ? first.origin_airport : active.origin_airport;
-  const originCity = multi ? first.origin_city : active.origin_city;
-  const destAirport = multi ? last.destination_airport : active.destination_airport;
-  const destCity = multi ? last.destination_city : active.destination_city;
+  const showAirborneLeg = active.status === "air";
+  const originAirport = showAirborneLeg || !multi ? active.origin_airport : first.origin_airport;
+  const originCity = showAirborneLeg || !multi ? active.origin_city : first.origin_city;
+  const destAirport = showAirborneLeg || !multi ? active.destination_airport : last.destination_airport;
+  const destCity = showAirborneLeg || !multi ? active.destination_city : last.destination_city;
   const dep = legDeparture(active);
   const arrActive = legArrival(active);
-  const finalArrival = arrivalReading(last);
-  const landsAt = airportClock(finalArrival.iso, destAirport);
+  const arrival = arrivalReading(showAirborneLeg ? active : last);
+  const landsAt = airportClock(arrival.iso, destAirport);
   const allLanded = legs.every((l) => l.status === "landed");
-  // Overall trip progress: mean of the per-leg progress across the whole journey.
-  const progress = multi ? legs.reduce((s, l) => s + legProgress(l), 0) / legs.length : legProgress(active);
+  // Use the current leg while airborne; otherwise show overall journey progress.
+  const progress = showAirborneLeg || !multi ? legProgress(active) : legs.reduce((s, l) => s + legProgress(l), 0) / legs.length;
   const stops = legs.slice(0, -1).map((l) => l.destination_airport);
   const routeAirports = [first.origin_airport, ...legs.map((l) => l.destination_airport)];
   const driver = travel.driver;
@@ -146,8 +146,11 @@ export function FlightCard({ travel, full = false, leg: shownLeg }: { travel: Tr
       </div>
       {multi && (
         <div className="relative mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[11px] font-semibold text-[var(--flight-label)]">
-          <span className="mono">{routeAirports.join(" › ")}</span>
-          <span>· {stops.length} stop{stops.length > 1 ? "s" : ""}</span>
+          {showAirborneLeg ? (
+            <><span>Current leg</span><span className="mono">· {active.origin_airport} → {active.destination_airport}</span></>
+          ) : (
+            <><span className="mono">{routeAirports.join(" › ")}</span><span>· {stops.length} stop{stops.length > 1 ? "s" : ""}</span></>
+          )}
         </div>
       )}
       <div className="relative mt-3.5 flex items-end justify-between">
@@ -171,7 +174,7 @@ export function FlightCard({ travel, full = false, leg: shownLeg }: { travel: Tr
       <RouteMap progress={progress} />
       <div className="relative mt-3.5 flex gap-[7px]">
         {[
-          { v: landsAt.time, k: allLanded ? "Arrived" : "Lands", sub: `${finalArrival.label}${landsAt.zone ? ` ${landsAt.zone}` : ""}${landsAt.day ? ` · ${landsAt.day}` : ""}` },
+          { v: landsAt.time, k: allLanded ? "Arrived" : "Lands", sub: `${arrival.label}${landsAt.zone ? ` ${landsAt.zone}` : ""}${landsAt.day ? ` · ${landsAt.day}` : ""}` },
           { v: active.delay_minutes && active.delay_minutes > 0 ? `+${active.delay_minutes} min` : "On time", k: "Delay", late: (active.delay_minutes ?? 0) > 0 },
           { v: allLanded ? "✓" : remainingLabel(dep, arrActive, legProgress(active)) || "—", k: allLanded ? "Status" : "To go" },
           { v: active.aircraft_type_code ?? "—", k: "Aircraft" },

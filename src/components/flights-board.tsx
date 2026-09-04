@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import { cn } from "@/lib/cn";
 import { flightStatusMeta } from "@/lib/display";
 import { fmtDayShortUpper, tripDateOf, tripTodayISO } from "@/lib/format";
-import { airportRunsFor, pickupForLeg, type AirportRun } from "@/lib/travel";
+import { airportRuns, pickupForLeg, runIsPast, type AirportRun } from "@/lib/travel";
 import {
   currentLeg,
   dualTimeLabel,
@@ -108,7 +108,12 @@ export function FlightsBoard({ travel, me, users }: { travel: TravelView[]; me: 
     const todayFlights = travel.filter((t) => !air.includes(t) && touchesDate(t, today));
     const upcoming = travel.filter((t) => t.status === "upcoming" && !todayFlights.includes(t));
     const landed = travel.filter((t) => t.status === "arrived");
-    const runs = travel.flatMap((t) => t.status === "arrived" ? [] : airportRunsFor(t).filter((r) => r.kind === "pickup" && pickupForLeg(t, r.leg.id)));
+    // Read the shared chronological queue rather than the travel-group order;
+    // groups sort by their final arrival, which can put an earlier pickup after
+    // a later round trip. Completed runs do not stay actionable on this board.
+    const runs = airportRuns(travel).filter(
+      (r) => !runIsPast(r) && r.kind === "pickup" && pickupForLeg(r.trip, r.leg.id),
+    );
     return { air, todayFlights, upcoming, landed, runs };
   }, [travel]);
 

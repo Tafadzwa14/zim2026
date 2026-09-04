@@ -173,6 +173,11 @@ export function runIsPast(r: AirportRun, now: Date = new Date()): boolean {
   return r.leg.status === "air" || r.leg.status === "landed";
 }
 
+/** Every airport run still to come, ordered by the time the car needs to be there. */
+export function upcomingAirportRuns(travel: TravelView[], now: Date = new Date()): AirportRun[] {
+  return airportRuns(travel).filter((run) => !runIsPast(run, now));
+}
+
 /**
  * The trip to show a person as "my flight": their soonest live trip that
  * touches Harare and still has a leg to fly. Trips whose final arrival is

@@ -2,11 +2,13 @@ import { describe, expect, it } from "vitest";
 import type { TravelView } from "@/lib/repo/types";
 import type { FlightLeg, Pickup } from "@/lib/types";
 import {
+  airportRuns,
   airportRunsFor,
   currentLeg,
   journeyStatus,
   locationStatusForJourneys,
   pickupForLeg,
+  upcomingAirportRuns,
 } from "./travel";
 
 function leg(input: Partial<FlightLeg> & Pick<FlightLeg, "id" | "leg_order" | "origin_airport" | "destination_airport">): FlightLeg {
@@ -49,6 +51,20 @@ describe("multi-leg travel derivations", () => {
     expect(runs.map((run) => [run.kind, run.leg.id]))
       .toEqual([["pickup", "in"], ["dropoff", "out"]]);
     expect(runs.find((run) => run.kind === "dropoff")?.hreIso).toBe("2026-09-20T06:00:00.000Z");
+  });
+
+  it("sorts runs by their Harare time and excludes completed runs from the live queue", () => {
+    const later = trip([leg({
+      id: "later", leg_order: 0, origin_airport: "LHR", destination_airport: "HRE",
+      scheduled_arrival: "2026-09-10T12:00:00Z",
+    })]);
+    const earlier = trip([leg({
+      id: "earlier", leg_order: 0, origin_airport: "JNB", destination_airport: "HRE",
+      scheduled_arrival: "2026-09-09T10:00:00Z",
+    })]);
+
+    expect(airportRuns([later, earlier]).map((run) => run.leg.id)).toEqual(["earlier", "later"]);
+    expect(upcomingAirportRuns([later, earlier], new Date("2026-09-10T11:00:00Z")).map((run) => run.leg.id)).toEqual(["later"]);
   });
 
   it("selects the next unflown leg and returns null after the whole trip", () => {
