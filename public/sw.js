@@ -12,7 +12,7 @@
 //
 // Bump CACHE_VERSION to invalidate old caches on the next activate.
 
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 const SHELL_CACHE = `zc-shell-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `zc-runtime-${CACHE_VERSION}`;
 const OFFLINE_URL = "/offline.html";
