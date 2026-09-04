@@ -67,10 +67,14 @@ export function ServiceWorkerRegister() {
           };
           checkForUpdate();
           window.addEventListener("focus", checkForUpdate);
+          document.addEventListener("visibilitychange", checkForUpdate);
+          const updateInterval = window.setInterval(checkForUpdate, 5 * 60 * 1000);
 
           return () => {
             registration.removeEventListener("updatefound", handleUpdate);
             window.removeEventListener("focus", checkForUpdate);
+            document.removeEventListener("visibilitychange", checkForUpdate);
+            window.clearInterval(updateInterval);
           };
         })
         .catch(() => {

@@ -104,7 +104,7 @@ export function FlightsBoard({ travel, me, users }: { travel: TravelView[]; me: 
 
   const groups = useMemo(() => {
     const today = tripTodayISO();
-    const air = travel.filter((t) => t.legs.some((l) => l.status === "air"));
+    const air = travel.filter((t) => currentLeg(t)?.status === "air");
     const todayFlights = travel.filter((t) => !air.includes(t) && touchesDate(t, today));
     const upcoming = travel.filter((t) => t.status === "upcoming" && !todayFlights.includes(t));
     const landed = travel.filter((t) => t.status === "arrived");

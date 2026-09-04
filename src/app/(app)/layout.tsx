@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { isSupabaseConfigured } from "@/lib/env";
 import { getCurrentUser } from "@/lib/identity";
 import { getRepo } from "@/lib/repo";
+import { syncFlightsForPageLoad } from "@/lib/flight-sync";
 import { ThemeProvider, ToastProvider } from "@/components/providers";
 import { AppFrame } from "@/components/app-frame";
 
@@ -12,7 +13,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!user) redirect("/onboarding");
 
   const repo = getRepo();
-  const [users, settings, shopping, tasks, travel, places] = await Promise.all([
+  const [users, settings, shopping, tasks, initialTravel, places] = await Promise.all([
     repo.listUsers(),
     repo.getSettings(),
     repo.listShopping(),
@@ -20,6 +21,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     repo.listTravel(),
     repo.listPlaces(),
   ]);
+  await syncFlightsForPageLoad(repo, initialTravel);
+  const travel = await repo.listTravel();
   const counts = {
     pickups: travel.flatMap((t) => t.pickups).filter((p) => p.requested && !p.driver_user_id).length,
     shopping: shopping.filter((s) => !s.completed).length,

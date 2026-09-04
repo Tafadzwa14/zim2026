@@ -2,6 +2,7 @@ import { airportZone, AIRPORTS } from "@/lib/airports";
 import { fmtTime, fmtTimeIn, isoToZonedInput, TRIP_TZ, zonedInputToIso } from "@/lib/format";
 import type { TravelView } from "@/lib/repo/types";
 import type { FlightLeg } from "@/lib/types";
+import { currentLeg as currentTravelLeg } from "@/lib/travel";
 
 export function legDeparture(leg: FlightLeg | null): string | null {
   return leg?.actual_departure ?? leg?.estimated_departure ?? leg?.scheduled_departure ?? null;
@@ -18,18 +19,7 @@ export function finalLeg(travel: TravelView): FlightLeg | null {
 
 export function currentLeg(travel: TravelView): FlightLeg | null {
   const legs = [...travel.legs].sort((a, b) => a.leg_order - b.leg_order);
-  const now = Date.now();
-  const flown = (l: FlightLeg) => {
-    const arr = legArrival(l);
-    return l.status === "landed" || l.status === "cancelled" || (arr ? Date.parse(arr) < now : false);
-  };
-  return (
-    legs.find((l) => l.status === "air") ??
-    legs.find((l) => l.status === "boarding" && !flown(l)) ??
-    legs.find((l) => !flown(l)) ??
-    legs[legs.length - 1] ??
-    null
-  );
+  return currentTravelLeg(legs) ?? legs[legs.length - 1] ?? null;
 }
 
 export function tripRouteLabel(travel: TravelView): string {

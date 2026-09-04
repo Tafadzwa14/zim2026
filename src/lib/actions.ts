@@ -17,13 +17,11 @@ import {
   setSession,
   verifyPin,
 } from "@/lib/identity";
-import { estimateProgress, getFlightPosition, getFlightStatus, searchFlight } from "@/lib/flights";
-import { routeFraction } from "@/lib/flights/geo";
-import { airportZone } from "@/lib/airports";
-import { dateIn } from "@/lib/format";
+import { searchFlight } from "@/lib/flights";
+import { syncTravelFlights } from "@/lib/flight-sync";
 import { sanitiseLayout, type Surface } from "@/lib/home-layout";
 import { journeyStatus, locationStatusForJourneys } from "@/lib/travel";
-import type { FlightStatus, PlanCategory, UserPrefs } from "@/lib/types";
+import type { PlanCategory, UserPrefs } from "@/lib/types";
 
 export type ActionResult<T = unknown> =
   | ({ ok: true; message?: string } & T)
@@ -210,9 +208,8 @@ export async function deletePlan(planId: string): Promise<ActionResult> {
 async function syncUserTravelStatuses(repo: Repo, userIds: string[]): Promise<void> {
   const travel = await repo.listTravel();
   for (const userId of new Set(userIds)) {
-    const mine = travel.filter((t) => t.members.some((m) => m.id === userId));
-    const status = locationStatusForJourneys(mine.map((trip) => trip.status));
-    await repo.setUserStatus(userId, status);
+    const mine = travel.filter((trip) => trip.members.some((member) => member.id === userId));
+    await repo.setUserStatus(userId, locationStatusForJourneys(mine.map((trip) => trip.status)));
   }
 }
 
@@ -363,68 +360,11 @@ export async function refreshFlight(travelId: string): Promise<ActionResult> {
   const repo = getRepo();
   const tg = await repo.getTravel(travelId);
   if (!tg) return fail("Flight not found");
-  // Every leg's status once this refresh is done, whether it came from the
-  // provider or stayed as it was, so the journey test below sees the whole trip.
-  const statuses: FlightStatus[] = [];
   try {
-    for (const leg of tg.legs) {
-      const date = leg.scheduled_departure ? dateIn(leg.scheduled_departure, airportZone(leg.origin_airport)) : "";
-      const status = date ? await getFlightStatus(leg.flight_number, date, leg.status === "air", {
-        origin: leg.origin_airport,
-        destination: leg.destination_airport,
-        providerFlightId: leg.provider_flight_id,
-      }) : null;
-      if (!status) {
-        statuses.push(leg.status);
-        continue;
-      }
-      const dep = status.departure.actualTime ?? status.departure.estimatedTime ?? status.departure.scheduledTime ?? leg.scheduled_departure;
-      const arr = status.arrival.actualTime ?? status.arrival.estimatedTime ?? status.arrival.scheduledTime ?? leg.scheduled_arrival;
-      let prog = status.status === "landed" ? 1 : status.status === "air" ? estimateProgress(dep, arr) : 0;
-      // Prefer a live OpenSky position for the plane when airborne; fall back
-      // to the time estimate when the radar can't see it (ocean/Africa gaps).
-      let progressSource: import("@/lib/types").FlightLeg["progress_source"] = null;
-      if (status.status === "air") {
-        progressSource = "estimated";
-        const pos = await getFlightPosition(leg.flight_number, date, true);
-        if (pos) {
-          const live = routeFraction(
-            status.departure.airport || leg.origin_airport,
-            status.arrival.airport || leg.destination_airport,
-            pos
-          );
-          if (live !== null) {
-            prog = live;
-            progressSource = "live";
-          }
-        }
-      }
-      await repo.syncLeg(leg.id, {
-        status: status.status,
-        airline_name: status.airlineName ?? leg.airline_name,
-        estimated_departure: status.departure.estimatedTime,
-        actual_departure: status.departure.actualTime,
-        estimated_arrival: status.arrival.estimatedTime,
-        actual_arrival: status.arrival.actualTime,
-        terminal_departure: status.departure.terminal ?? leg.terminal_departure,
-        gate_departure: status.departure.gate ?? leg.gate_departure,
-        terminal_arrival: status.arrival.terminal ?? leg.terminal_arrival,
-        gate_arrival: status.arrival.gate ?? leg.gate_arrival,
-        aircraft_type: status.aircraftType ?? leg.aircraft_type,
-        aircraft_type_code: status.aircraftTypeCode ?? leg.aircraft_type_code,
-        aircraft_registration: status.aircraftRegistration ?? leg.aircraft_registration,
-        delay_minutes: status.delayMinutes ?? leg.delay_minutes,
-        progress: prog,
-        progress_source: progressSource,
-      });
-      statuses.push(status.status);
-    }
+    await syncTravelFlights(repo, tg);
   } catch {
     return fail("Live flight information is temporarily unavailable");
   }
-  const journey = journeyStatus(statuses);
-  await repo.setTravelStatus(travelId, journey);
-  await syncUserTravelStatuses(repo, tg.members.map((m) => m.id));
   refresh();
   return ok({}, "Flight updated");
 }

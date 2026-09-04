@@ -56,6 +56,12 @@ describe("multi-leg travel derivations", () => {
     expect(currentLeg([inbound, outbound], new Date("2026-09-22T00:00:00Z"))).toBeNull();
   });
 
+  it("does not let an overdue in-air status hide a current flight", () => {
+    const stale = leg({ ...inbound, id: "stale", status: "air" });
+    const current = leg({ ...outbound, id: "current", status: "air", scheduled_departure: "2026-09-10T00:00:00Z", scheduled_arrival: "2026-09-10T12:00:00Z" });
+    expect(currentLeg([stale, current], new Date("2026-09-10T06:00:00Z"))?.id).toBe("current");
+  });
+
   it("matches a pickup only to its own arrival leg", () => {
     const pickup = { id: "pickup", travel_group_id: "trip", flight_leg_id: "in", requested: true } as Pickup;
     const view = trip([inbound, outbound], [pickup]);

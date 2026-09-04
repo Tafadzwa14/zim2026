@@ -75,7 +75,7 @@ export function pickupForLeg(t: TravelView, legId: string): Pickup | null {
 export function currentLeg(legs: FlightLeg[], now: Date = new Date()): FlightLeg | null {
   const flown = (l: FlightLeg) =>
     l.status === "landed" || l.status === "cancelled" || instant(legArrival(l)) < now.getTime();
-  return legs.find((l) => l.status === "air") ?? legs.find((l) => !flown(l)) ?? null;
+  return legs.find((l) => l.status === "air" && !flown(l)) ?? legs.find((l) => !flown(l)) ?? null;
 }
 
 /**

@@ -4,15 +4,18 @@
 //   - Page navigations: network-only, falling back to a generic offline page.
 //     Authenticated HTML is never cached, so a shared device cannot reveal the
 //     previous person's dashboard after sign-out.
-//   - Static build assets (/_next/static, icons, fonts, images): stale-while-
-//     revalidate, so they load instantly and refresh in the background.
+//   - Next.js build assets (/_next/static): network-first, with a cached
+//     fallback offline. This prevents an old JavaScript bundle being used after
+//     a deployment while preserving offline resilience.
+//   - Icons, fonts, and images: stale-while-revalidate, so they load instantly
+//     and refresh in the background.
 //   - Everything else same-origin (RSC payloads, API/action GETs) and every
 //     cross-origin request (Supabase REST/Realtime lives off-origin) passes
 //     straight through to the network, never cached.
 //
 // Bump CACHE_VERSION to invalidate old caches on the next activate.
 
-const CACHE_VERSION = "v3";
+const CACHE_VERSION = "v4";
 const SHELL_CACHE = `zc-shell-${CACHE_VERSION}`;
 const RUNTIME_CACHE = `zc-runtime-${CACHE_VERSION}`;
 const OFFLINE_URL = "/offline.html";
@@ -53,7 +56,7 @@ self.addEventListener("message", (event) => {
 });
 
 function isStaticAsset(url) {
-  return url.pathname.startsWith("/_next/static/") || STATIC_EXT.test(url.pathname);
+  return STATIC_EXT.test(url.pathname);
 }
 
 // Stale-while-revalidate: serve cache immediately, update it in the background.
@@ -67,6 +70,19 @@ async function staleWhileRevalidate(request) {
     })
     .catch(() => undefined);
   return cached || network || fetch(request);
+}
+
+// Always prefer the deployed Next bundle. Unlike images and fonts, an outdated
+// JavaScript or CSS chunk can leave an open app running an entire old release.
+async function networkFirstStatic(request) {
+  const cache = await caches.open(RUNTIME_CACHE);
+  try {
+    const response = await fetch(request);
+    if (response && response.ok) cache.put(request, response.clone());
+    return response;
+  } catch {
+    return (await cache.match(request)) || Response.error();
+  }
 }
 
 // Network-only for navigations, with a generic offline-page fallback.
@@ -89,6 +105,11 @@ self.addEventListener("fetch", (event) => {
 
   if (request.mode === "navigate") {
     event.respondWith(networkFirstNavigation(request));
+    return;
+  }
+
+  if (url.pathname.startsWith("/_next/static/")) {
+    event.respondWith(networkFirstStatic(request));
     return;
   }
 

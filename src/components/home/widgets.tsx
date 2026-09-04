@@ -68,7 +68,12 @@ function runTimeSummary(run: AirportRun): string {
 
 /** The leg a trip has in the air right now, if any. `activeLeg` can't be trusted for this. */
 export function airborneLeg(t: TravelView): FlightLeg | null {
-  return orderedLegs(t).find((l) => l.status === "air") ?? null;
+  const now = Date.now();
+  return orderedLegs(t).find((l) => {
+    const arrival = legArrival(l);
+    const arrivalTime = arrival ? Date.parse(arrival) : NaN;
+    return l.status === "air" && (!Number.isFinite(arrivalTime) || arrivalTime >= now);
+  }) ?? null;
 }
 
 /** The soonest thing on the calendar (plans + arrivals + wedding), from today on. */
